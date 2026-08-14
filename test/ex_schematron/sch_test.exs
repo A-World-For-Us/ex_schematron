@@ -3,7 +3,7 @@ defmodule ExSchematron.SchTest do
 
   alias ExSchematron.Sch
 
-  @pilot Path.join(__DIR__, "../fixtures/schematron/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch")
+  @pilot Path.join(__DIR__, "../fixtures/schematron/flux2/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch")
 
   @minimal """
   <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">

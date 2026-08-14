@@ -26,6 +26,7 @@ defmodule ExSchematron.Compiler do
     defstruct ns: %{},
               vars: %{},
               functions: %{},
+              base_dir: nil,
               ctx: nil,
               position: nil,
               size: nil,
@@ -35,18 +36,23 @@ defmodule ExSchematron.Compiler do
   @doc "Compiles a parsed schematron into a quoted module body defining `validate/1`."
   @spec build_body!(Sch.Schema.t()) :: Macro.t()
   def build_body!(%Sch.Schema{} = schema) do
-    if schema.phases != [] do
-      raise Error, message: "schematron phases are not supported yet"
+    # Without defaultPhase the ISO default phase is #ALL: every pattern is active
+    # and the phase declarations are inert, so they can be ignored safely.
+    if schema.default_phase do
+      raise Error, message: "schematron defaultPhase is not supported yet"
     end
 
     functions = Map.new(schema.functions, fn function -> {function.name, length(function.params)} end)
 
-    base_env = %Env{ns: schema.namespaces, functions: functions}
+    base_env = %Env{ns: schema.namespaces, functions: functions, base_dir: schema.base_dir}
 
-    global_names = Enum.map(schema.lets, fn {name, _value} -> name end)
+    # Pattern-level lets are hoisted to schema level, like SchXslt compiles them
+    # (global xsl:variable): the corpus references them across pattern boundaries.
+    global_lets = schema.lets ++ hoist_pattern_lets(schema.patterns)
+    global_names = Enum.map(global_lets, fn {name, _value} -> name end)
 
     function_defs = Enum.map(schema.functions, &compile_function(&1, base_env))
-    globals_def = compile_globals(schema.lets, base_env)
+    globals_def = compile_globals(global_lets, base_env)
 
     {pattern_defs, pattern_calls} =
       schema.patterns
@@ -80,6 +86,23 @@ defmodule ExSchematron.Compiler do
 
   # ---------------------------------------------------------------- globals
 
+  defp hoist_pattern_lets(patterns) do
+    all_lets = for pattern <- patterns, let <- pattern.lets, do: {let, pattern.id}
+
+    all_lets
+    |> Enum.group_by(fn {{name, _value}, _pattern_id} -> name end)
+    |> Enum.each(fn {name, declarations} ->
+      values = declarations |> Enum.map(fn {{_name, value}, _pattern_id} -> value end) |> Enum.uniq()
+
+      if length(values) > 1 do
+        pattern_ids = Enum.map(declarations, &elem(&1, 1))
+        raise Error, message: "pattern let $#{format_name(name)} declared with different values in patterns #{inspect(pattern_ids)}"
+      end
+    end)
+
+    all_lets |> Enum.map(&elem(&1, 0)) |> Enum.uniq_by(fn {name, _value} -> name end)
+  end
+
   defp compile_globals(lets, env) do
     ctx_var = Macro.var(:ctx, __MODULE__)
 
@@ -110,27 +133,6 @@ defmodule ExSchematron.Compiler do
 
     env = Enum.reduce(global_names, env, fn name, env -> put_var(env, name, quote(do: globals.unquote(let_var(name)))) end)
 
-    # Pattern-level lets evaluate once, with the document node as context, and are
-    # visible from the rule contexts of the pattern; they ride along in `globals`.
-    {pattern_let_bindings, env} =
-      Enum.reduce(pattern.lets, {[], env}, fn {name, value}, {bindings, env} ->
-        var = let_var(name)
-        let_env = %{env | ctx: quote(do: {:node, doc.root_id}), where: "let $#{format_name(name)} of pattern #{inspect(pattern.id)}"}
-        binding = quote do: unquote(var) = unquote(compile_source(value, let_env))
-        {[binding | bindings], put_var(env, name, quote(do: globals.unquote(var)))}
-      end)
-
-    pattern_let_bindings =
-      case pattern.lets do
-        [] ->
-          []
-
-        lets ->
-          entries = Enum.map(lets, fn {name, _value} -> {var_key(name), let_var(name)} end)
-          merge = quote do: globals = Map.merge(globals, unquote({:%{}, [], entries}))
-          Enum.reverse([merge | pattern_let_bindings])
-      end
-
     rules = Enum.with_index(pattern.rules)
 
     rule_defs =
@@ -138,32 +140,30 @@ defmodule ExSchematron.Compiler do
         compile_rule(rule, :"#{pattern_fun}_rule_#{rule_index}", env)
       end)
 
-    set_bindings =
+    # One list rather than one variable per rule: closures cannot capture more
+    # than 255 free variables on the BEAM, and some patterns exceed 300 rules.
+    set_exprs =
       Enum.map(rules, fn {rule, rule_index} ->
-        set_var = Macro.var(:"set_#{rule_index}", __MODULE__)
         match_expr = compile_context(rule.context, %{env | where: "context of rule #{rule_index} in pattern #{inspect(pattern.id)}"})
-        quote do: unquote(set_var) = XP.match_set(unquote(match_expr))
+        quote do: XP.match_set(unquote(match_expr))
       end)
 
-    cond_clauses =
+    dispatch_clauses =
       Enum.map(rules, fn {_rule, rule_index} ->
-        set_var = Macro.var(:"set_#{rule_index}", __MODULE__)
         checks_fun = :"#{pattern_fun}_rule_#{rule_index}"
-
-        {:->, [],
-         [[quote(do: MapSet.member?(unquote(set_var), node_id))], quote(do: unquote(checks_fun)(doc, globals, {:node, node_id}))]}
+        {:->, [], [[rule_index], quote(do: unquote(checks_fun)(doc, globals, {:node, node_id}))]}
       end)
 
-    fallback = {:->, [], [[true], []]}
+    fallback = {:->, [], [[nil], []]}
+    dispatch = {:case, [], [quote(do: Enum.find_index(rule_sets, &MapSet.member?(&1, node_id))), [do: [fallback | dispatch_clauses]]]}
 
     pattern_def =
       quote do
         defp unquote(pattern_fun)(doc, globals) do
-          unquote_splicing(pattern_let_bindings)
-          unquote_splicing(set_bindings)
+          rule_sets = [unquote_splicing(set_exprs)]
 
           Enum.flat_map(XP.all_node_ids(doc), fn node_id ->
-            unquote({:cond, [], [[do: cond_clauses ++ [fallback]]]})
+            unquote(dispatch)
           end)
         end
       end
@@ -196,7 +196,16 @@ defmodule ExSchematron.Compiler do
         Enum.reject([unquote_splicing(check_exprs)], &is_nil/1)
       rescue
         error in [ExSchematron.Runtime.Error] ->
-          [%{type: :error, rule: unquote(rule.context), flag: nil, message: Exception.message(error), node: XP.node_path(doc, ctx_id)}]
+          [
+            %{
+              type: :error,
+              rule: unquote(rule.context),
+              test: nil,
+              flag: nil,
+              message: Exception.message(error),
+              node: XP.node_path(doc, ctx_id)
+            }
+          ]
       end
     end
   end
@@ -216,6 +225,7 @@ defmodule ExSchematron.Compiler do
         %{
           type: unquote(check.type),
           rule: unquote(check.id),
+          test: unquote(check.test),
           flag: unquote(check.flag),
           message: XP.message([unquote_splicing(message_segments)]),
           node: XP.node_path(doc, ctx_id)
@@ -240,6 +250,22 @@ defmodule ExSchematron.Compiler do
 
   defp anchor_context({:path, :relative, steps}, _env) do
     {:path, :root, [{:step, :descendant_or_self, {:kind, :node}, []} | steps]}
+  end
+
+  # "(A|B)/C" as a match pattern is any C under an A or a B anywhere: anchoring
+  # distributes into the parenthesized origin, the trailing steps are unchanged.
+  defp anchor_context({:path, {:expr, origin}, steps}, env) do
+    {:path, {:expr, anchor_context(origin, env)}, steps}
+  end
+
+  # "(A|B)[pred]": the predicate filters the anchored set. Only boolean predicates
+  # keep XSLT match semantics there; a positional one would count the whole set.
+  defp anchor_context({:filter, inner, predicates}, env) do
+    if Enum.any?(predicates, &match?({:lit, _value}, &1)) do
+      raise Error, message: "positional predicate on a filtered rule context is not supported, in #{env.where}"
+    end
+
+    {:filter, anchor_context(inner, env), predicates}
   end
 
   defp anchor_context(other, env) do
@@ -374,6 +400,27 @@ defmodule ExSchematron.Compiler do
 
   defp compile_expr(:context_item, env), do: quote(do: [unquote(ctx!(env))])
 
+  # The corpus uses document() in exactly one shape, a code-list membership test:
+  # document('x_codedb.xml')/codedb/cl[@id=N]/enumeration[@value=$v]. The list is
+  # frozen into the module as a MapSet at generation time; the emitted expression
+  # keeps the EBV the node sequence would have ([] or a non-empty sequence).
+  # Any other use of document() falls through to the unsupported-function raise.
+  defp compile_expr(
+         {:path, {:expr, {:fn, {nil, "document"}, [{:lit, file}]}},
+          [
+            {:step, :child, {:name, nil, "codedb"}, []},
+            {:step, :child, {:name, nil, "cl"},
+             [{:cmp, :general, :eq, {:path, :relative, [{:step, :attribute, {:name, nil, "id"}, []}]}, {:lit, cl_id}}]},
+            {:step, :child, {:name, nil, "enumeration"},
+             [{:cmp, :general, :eq, {:path, :relative, [{:step, :attribute, {:name, nil, "value"}, []}]}, checked_expr}]}
+          ]},
+         env
+       )
+       when is_binary(file) and is_integer(cl_id) do
+    values = codelist_values!(file, cl_id, env)
+    quote do: XP.codelist_member?(doc, unquote(Macro.escape(values)), unquote(compile_expr(checked_expr, env)))
+  end
+
   defp compile_expr({:path, origin, steps}, env) do
     initial =
       case origin do
@@ -482,6 +529,57 @@ defmodule ExSchematron.Compiler do
   defp validate_cast_type!({prefix, local}, env) do
     unless prefix == "xs" and local in @cast_targets do
       raise Error, message: "unsupported cast target #{format_name({prefix, local})} in #{env.where}"
+    end
+  end
+
+  # ----------------------------------------------------------- code lists
+
+  defp codelist_values!(file, cl_id, env) do
+    unless env.base_dir do
+      raise Error, message: "document(#{inspect(file)}) needs the schematron's directory; compile from a file path, in #{env.where}"
+    end
+
+    path = Path.join(env.base_dir, file)
+    codedb = codedb_document!(path, env)
+
+    id_string = Integer.to_string(cl_id)
+
+    values =
+      for code_list <- ExSchematron.Xml.children(codedb, hd(ExSchematron.Xml.children(codedb, codedb.root_id)).id),
+          code_list.kind == :element,
+          Enum.any?(ExSchematron.Xml.attributes(codedb, code_list.id), fn attr ->
+            attr.name == {nil, "id"} and attr.value == id_string
+          end),
+          enumeration <- ExSchematron.Xml.children(codedb, code_list.id),
+          enumeration.kind == :element,
+          attr <- ExSchematron.Xml.attributes(codedb, enumeration.id),
+          attr.name == {nil, "value"},
+          into: MapSet.new(),
+          do: attr.value
+
+    if MapSet.size(values) == 0 do
+      raise Error, message: "code list cl[@id=#{cl_id}] is empty or missing in #{path}, in #{env.where}"
+    end
+
+    values
+  end
+
+  # One codedb file is referenced hundreds of times; parse it once per compilation.
+  defp codedb_document!(path, env) do
+    key = {__MODULE__, :codedb, path}
+
+    case Process.get(key) do
+      nil ->
+        unless File.exists?(path) do
+          raise Error, message: "code list file #{path} not found, in #{env.where}"
+        end
+
+        codedb = path |> File.read!() |> ExSchematron.Xml.parse!()
+        Process.put(key, codedb)
+        codedb
+
+      codedb ->
+        codedb
     end
   end
 

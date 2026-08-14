@@ -33,16 +33,34 @@ defmodule ExSchematron.Mutator do
     |> Enum.filter(fn {start, len} -> String.trim(binary_part(source, start, len)) != "" end)
     |> Enum.map(fn {start, len} ->
       original = String.trim(binary_part(source, start, len))
-      replacement = if String.match?(original, ~r/^-?\d+(\.\d+)?$/), do: "99999.99", else: "@@@"
+
+      # Typed reference implementations cast some values (xs:boolean, numerics)
+      # while evaluating; the replacement must stay castable or Saxon aborts
+      # instead of producing a comparable verdict.
+      replacement =
+        cond do
+          original == "true" -> "false"
+          original == "false" -> "true"
+          String.match?(original, ~r/^\d{4}-\d{2}-\d{2}/) -> "2099-12-31"
+          String.match?(original, ~r/^-?\d+(\.\d+)?$/) -> "99999.99"
+          true -> "@@@"
+        end
+
       replace_range(source, {start, len}, replacement)
     end)
   end
 
   defp attribute_mutations(source) do
+    declaration_end =
+      case :binary.match(source, "?>") do
+        {position, length} -> position + length
+        :nomatch -> 0
+      end
+
     ~r/([\w:.-]+)="([^"]*)"/
     |> Regex.scan(source, return: :index)
-    |> Enum.reject(fn [_full, {name_start, name_len}, _value] ->
-      binary_part(source, name_start, name_len) =~ ~r/^(xmlns|xsi:|xml:)/
+    |> Enum.reject(fn [{full_start, _full_len}, {name_start, name_len}, _value] ->
+      full_start < declaration_end or binary_part(source, name_start, name_len) =~ ~r/^(xmlns|xsi:|xml:)/
     end)
     |> Enum.map(fn [_full, _name, {start, len}] -> replace_range(source, {start, len}, "@@@") end)
   end

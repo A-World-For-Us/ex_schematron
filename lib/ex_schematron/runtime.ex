@@ -475,6 +475,17 @@ defmodule ExSchematron.Runtime do
     iodata |> IO.iodata_to_binary() |> String.split(~r/\s+/u, trim: true) |> Enum.join(" ")
   end
 
+  @doc """
+  Membership test against a generation-time frozen code list. Existential like a
+  general comparison; returns a sequence so the caller's EBV matches the node
+  sequence the original document() path expression would produce.
+  """
+  @spec codelist_member?(Xml.Document.t(), MapSet.t(), seq()) :: [true] | []
+  def codelist_member?(doc, %MapSet{} = values, seq) do
+    found = doc |> atomize(seq) |> Enum.any?(fn item -> MapSet.member?(values, item_string(doc, item)) end)
+    if found, do: [true], else: []
+  end
+
   @doc "Integer range `a to b`; empty when an operand is empty or a > b."
   @spec range(seq(), seq()) :: seq()
   def range([], _to_seq), do: []

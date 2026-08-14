@@ -38,10 +38,10 @@ ExSchematron.compile!(sch_source, MyValidator)
 ## Correctness
 
 Beyond unit tests of the XPath runtime, the test suite replays a differential
-oracle: hundreds of deterministic mutants of real invoices, with the verdicts of
-Saxon-HE (running the schematron's reference XSLT) frozen in
-`test/fixtures/oracle_verdicts.exs`. The suite requires no Java; refreshing the
-manifest does (see `scripts/gen_mutants.exs` and `scripts/diff_oracle.exs`).
+oracle: thousands of deterministic mutants of real invoices, with the verdicts
+of Saxon-HE (running each schematron's reference XSLT) frozen per schematron in
+`test/fixtures/oracle/`. The suite requires no Java; refreshing the manifests
+does (`mix run scripts/refresh_oracle.exs`).
 
 ## Status
 

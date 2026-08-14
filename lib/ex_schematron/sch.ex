@@ -17,7 +17,8 @@ defmodule ExSchematron.Sch do
   end
 
   defmodule Schema do
-    defstruct namespaces: %{}, lets: [], functions: [], patterns: [], phases: []
+    @moduledoc "base_dir resolves relative document() references; nil when parsed from a string."
+    defstruct namespaces: %{}, default_phase: nil, base_dir: nil, lets: [], functions: [], patterns: [], phases: []
   end
 
   defmodule Pattern do
@@ -55,12 +56,17 @@ defmodule ExSchematron.Sch do
 
     doc
     |> element_children(root)
-    |> Enum.reduce(%Schema{}, fn element, schema -> parse_schema_child(doc, element, schema) end)
+    |> Enum.reduce(%Schema{default_phase: attr(doc, root, "defaultPhase")}, fn element, schema ->
+      parse_schema_child(doc, element, schema)
+    end)
     |> reverse_lists()
   end
 
   @spec parse_file!(Path.t()) :: Schema.t()
-  def parse_file!(path), do: path |> File.read!() |> parse!()
+  def parse_file!(path) do
+    schema = path |> File.read!() |> parse!()
+    %{schema | base_dir: Path.dirname(path)}
+  end
 
   defp parse_schema_child(doc, %Xml.Node{name: {@sch_ns, "ns"}} = element, schema) do
     %{schema | namespaces: Map.put(schema.namespaces, attr!(doc, element, "prefix"), attr!(doc, element, "uri"))}

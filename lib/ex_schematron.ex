@@ -32,10 +32,20 @@ defmodule ExSchematron do
     end
   end
 
+  @doc "Builds a validation module named `module_name` from a schematron file."
+  @spec compile_file!(Path.t(), module()) :: module()
+  def compile_file!(sch_path, module_name) do
+    sch_path |> Sch.parse_file!() |> create_module(module_name)
+  end
+
   @doc "Builds a validation module named `module_name` from schematron source."
   @spec compile!(binary(), module()) :: module()
   def compile!(sch_source, module_name) do
-    body = sch_source |> Sch.parse!() |> Compiler.build_body!()
+    sch_source |> Sch.parse!() |> create_module(module_name)
+  end
+
+  defp create_module(schema, module_name) do
+    body = Compiler.build_body!(schema)
     {:module, module, _binary, _result} = Module.create(module_name, body, Macro.Env.location(__ENV__))
     module
   end
