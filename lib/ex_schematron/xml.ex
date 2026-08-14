@@ -114,9 +114,12 @@ defmodule ExSchematron.Xml do
 
   @spec parse!(binary()) :: Document.t()
   def parse!(xml) when is_binary(xml) do
-    {:ok, %{root: root}} = Saxy.parse_string(xml, Builder, %{stack: [], root: nil})
+    {:ok, %{root: root}} = xml |> strip_bom() |> Saxy.parse_string(Builder, %{stack: [], root: nil})
     index(root)
   end
+
+  defp strip_bom(<<0xEF, 0xBB, 0xBF, rest::binary>>), do: rest
+  defp strip_bom(xml), do: xml
 
   # Id 0 is the XPath document node: "/" selects it, the root element is its child.
   defp index(root_tree) do

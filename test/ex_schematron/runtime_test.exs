@@ -128,7 +128,7 @@ defmodule ExSchematron.RuntimeTest do
     test "positional predicate", %{doc: doc} do
       root_element = Runtime.step(doc, Runtime.root(doc), :child, {:name, :any, "invoice"}, [])
 
-      first_line = Runtime.step(doc, root_element, :child, {:name, :any, "line"}, [fn _doc, _item, _pos, _size -> [1] end])
+      first_line = Runtime.step(doc, root_element, :child, {:name, :any, "line"}, [fn _item, _pos, _size -> [1] end])
 
       assert [{:node, id}] = first_line
       assert Xml.string_value(doc, id) =~ "100.10"

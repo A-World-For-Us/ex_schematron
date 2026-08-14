@@ -455,6 +455,66 @@ defmodule ExSchematron.Runtime do
   @spec root(Xml.Document.t()) :: seq()
   def root(doc), do: [{:node, doc.root_id}]
 
+  @doc "Every node id in document order (used to drive schematron rule matching)."
+  @spec all_node_ids(Xml.Document.t()) :: [non_neg_integer()]
+  def all_node_ids(doc), do: doc.nodes |> Map.keys() |> Enum.sort()
+
+  @doc "Node-id membership set of a node sequence (schematron rule match sets)."
+  @spec match_set(seq()) :: MapSet.t()
+  def match_set(seq), do: MapSet.new(seq, fn {:node, id} -> id end)
+
+  @doc "xsl:value-of on a sequence: space-joined string values."
+  @spec value_of(Xml.Document.t(), seq()) :: binary()
+  def value_of(doc, seq) do
+    doc |> atomize(seq) |> Enum.map_join(" ", &item_string(doc, &1))
+  end
+
+  @doc "Builds a violation message: joins segments and collapses whitespace."
+  @spec message(iodata()) :: binary()
+  def message(iodata) do
+    iodata |> IO.iodata_to_binary() |> String.split(~r/\s+/u, trim: true) |> Enum.join(" ")
+  end
+
+  @doc "Integer range `a to b`; empty when an operand is empty or a > b."
+  @spec range(seq(), seq()) :: seq()
+  def range([], _to_seq), do: []
+  def range(_from_seq, []), do: []
+  def range([from], [to]) when is_integer(from) and is_integer(to), do: Enum.to_list(from..to//1)
+  def range(_from_seq, _to_seq), do: raise(Error, message: "range bounds must be single integers")
+
+  @doc "XPath-like location of a node, for violation reports."
+  @spec node_path(Xml.Document.t(), non_neg_integer()) :: binary()
+  def node_path(doc, id) do
+    case Xml.node(doc, id) do
+      %Xml.Node{kind: :document} ->
+        "/"
+
+      %Xml.Node{parent_id: nil} = node ->
+        "/" <> node_label(node)
+
+      %Xml.Node{kind: :attribute} = node ->
+        node_path(doc, node.parent_id) <> "/@" <> node_label(node)
+
+      node ->
+        prefix = if node.parent_id == doc.root_id, do: "", else: node_path(doc, node.parent_id)
+        "#{prefix}/#{node_label(node)}[#{sibling_position(doc, node)}]"
+    end
+  end
+
+  defp node_label(%Xml.Node{kind: :text}), do: "text()"
+  defp node_label(%Xml.Node{prefix: nil, name: {_uri, local}}), do: local
+  defp node_label(%Xml.Node{prefix: prefix, name: {_uri, local}}), do: prefix <> ":" <> local
+
+  defp sibling_position(doc, node) do
+    same_name =
+      case Xml.parent(doc, node.id) do
+        nil -> [node]
+        parent -> for sibling <- Xml.children(doc, parent.id), sibling.kind == node.kind, sibling.name == node.name, do: sibling
+      end
+
+    Enum.find_index(same_name, fn sibling -> sibling.id == node.id end) + 1
+  end
+
   @doc """
   One location step: for each context node (in document order), walk `axis`,
   filter by `test`, apply `predicates` with axis-local positions, then merge in
@@ -462,7 +522,7 @@ defmodule ExSchematron.Runtime do
 
   `test` is pre-resolved by the generator: `{:name, uri | :any, local | :any}`,
   `:node`, `:text` or `:comment`. Each predicate is a
-  `fun(doc, item, position, size) :: seq()` closure.
+  `fun(item, position, size) :: seq()` closure (the document is captured).
   """
   @spec step(Xml.Document.t(), seq(), atom(), term(), [fun()]) :: seq()
   def step(doc, input, axis, test, predicates \\ []) do
@@ -492,7 +552,7 @@ defmodule ExSchematron.Runtime do
 
     items
     |> Enum.with_index(1)
-    |> Enum.filter(fn {item, position} -> predicate_holds?(doc, predicate.(doc, item, position, size), position) end)
+    |> Enum.filter(fn {item, position} -> predicate_holds?(doc, predicate.(item, position, size), position) end)
     |> Enum.map(&elem(&1, 0))
     |> apply_predicates(doc, rest)
   end
@@ -512,11 +572,11 @@ defmodule ExSchematron.Runtime do
   in document order. All-node results are merged in document order; all-atomic
   results keep evaluation order; mixing both is an error.
   """
-  @spec expr_step(Xml.Document.t(), seq(), (Xml.Document.t(), item() -> seq())) :: seq()
-  def expr_step(doc, input, fun) do
+  @spec expr_step(Xml.Document.t(), seq(), (item() -> seq())) :: seq()
+  def expr_step(_doc, input, fun) do
     results =
       Enum.flat_map(input, fn
-        {:node, _id} = node -> fun.(doc, node)
+        {:node, _id} = node -> fun.(node)
         other -> raise Error, message: "path step on non-node #{inspect(other)}"
       end)
 
