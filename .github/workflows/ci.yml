@@ -16,14 +16,20 @@ jobs:
           elixir-version: "1.18"
           otp-version: "27"
 
+      # Keyed by sha with a prefix fallback: each run saves a fresh incremental
+      # _build, so the compiled schematron validators are reused across runs.
       - uses: actions/cache@v5
         with:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}
+          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}-
 
       - run: mix deps.get
       - run: mix format --check-formatted
       - run: mix compile --warnings-as-errors
+        env:
+          MIX_ENV: test
       - run: mix test
