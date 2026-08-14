@@ -21,3 +21,4 @@ ex_schematron-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+tools/
