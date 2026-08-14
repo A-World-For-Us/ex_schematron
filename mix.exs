@@ -20,7 +20,7 @@ defmodule ExSchematron.MixProject do
   defp deps do
     [
       {:saxy, "~> 1.6"},
-      {:decimal, "~> 2.0"}
+      {:decimal, "~> 2.0 or ~> 3.0"}
     ]
   end
 end
