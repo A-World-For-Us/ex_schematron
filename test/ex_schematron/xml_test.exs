@@ -18,7 +18,7 @@ defmodule ExSchematron.XmlTest do
 
   test "resolves namespaces on elements" do
     doc = Xml.parse!(@sample)
-    root = Xml.node(doc, doc.root_id)
+    root = doc |> Xml.children(doc.root_id) |> hd()
 
     assert root.name == {@cii_ns, "CrossIndustryInvoice"}
     assert root.kind == :element
@@ -29,7 +29,7 @@ defmodule ExSchematron.XmlTest do
 
   test "ids follow document order" do
     doc = Xml.parse!(@sample)
-    root = Xml.node(doc, doc.root_id)
+    root = doc |> Xml.children(doc.root_id) |> hd()
 
     elements = collect_elements(doc, root)
     ids = for element <- elements, do: element.id
@@ -69,7 +69,7 @@ defmodule ExSchematron.XmlTest do
 
   test "default namespace applies to elements, not attributes" do
     doc = Xml.parse!(~s(<Invoice xmlns="urn:ubl" currency="EUR"><ID>1</ID></Invoice>))
-    root = Xml.node(doc, doc.root_id)
+    root = doc |> Xml.children(doc.root_id) |> hd()
 
     assert root.name == {"urn:ubl", "Invoice"}
     assert [%Xml.Node{name: {nil, "currency"}}] = Xml.attributes(doc, root.id)
@@ -81,7 +81,8 @@ defmodule ExSchematron.XmlTest do
     doc = Xml.parse!(~s(<a>x &amp; y</a>))
     assert Xml.string_value(doc, doc.root_id) == "x & y"
 
-    [text_node] = Xml.children(doc, doc.root_id)
+    root = doc |> Xml.children(doc.root_id) |> hd()
+    [text_node] = Xml.children(doc, root.id)
     assert text_node.kind == :text
     assert text_node.value == "x & y"
   end
@@ -92,7 +93,7 @@ defmodule ExSchematron.XmlTest do
   end
 
   defp find_elements(doc, local_name) do
-    root = Xml.node(doc, doc.root_id)
+    root = doc |> Xml.children(doc.root_id) |> hd()
     for element <- collect_elements(doc, root), match?({_uri, ^local_name}, element.name), do: element
   end
 end

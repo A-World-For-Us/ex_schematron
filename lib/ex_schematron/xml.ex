@@ -15,14 +15,15 @@ defmodule ExSchematron.Xml do
   end
 
   defmodule Node do
-    defstruct [:id, :parent_id, :kind, :name, :value, children: []]
+    defstruct [:id, :parent_id, :kind, :name, :prefix, :value, children: []]
 
     @type name :: {uri :: binary() | nil, local :: binary()}
     @type t :: %__MODULE__{
             id: non_neg_integer(),
             parent_id: non_neg_integer() | nil,
-            kind: :element | :attribute | :text,
+            kind: :document | :element | :attribute | :text,
             name: name() | nil,
+            prefix: binary() | nil,
             value: binary() | nil,
             children: [non_neg_integer()]
           }
@@ -53,15 +54,15 @@ defmodule ExSchematron.Xml do
 
       resolved_attrs =
         for {attr_qname, value} <- attrs, not xmlns_attr?(attr_qname) do
-          {resolve_name(attr_qname, bindings, :attribute), value}
+          {resolve_name(attr_qname, bindings, :attribute), prefix_of(attr_qname), value}
         end
 
-      {:ok, %{state | stack: [{name, resolved_attrs, bindings, []} | stack]}}
+      {:ok, %{state | stack: [{{name, prefix_of(qname)}, resolved_attrs, bindings, []} | stack]}}
     end
 
     @impl true
-    def handle_event(:end_element, _qname, %{stack: [{name, attrs, _bindings, children} | rest]} = state) do
-      element = {:element, name, attrs, merge_text(Enum.reverse(children))}
+    def handle_event(:end_element, _qname, %{stack: [{{name, prefix}, attrs, _bindings, children} | rest]} = state) do
+      element = {:element, name, prefix, attrs, merge_text(Enum.reverse(children))}
 
       case rest do
         [] ->
@@ -90,6 +91,13 @@ defmodule ExSchematron.Xml do
     defp xmlns_attr?("xmlns:" <> _prefix), do: true
     defp xmlns_attr?(_qname), do: false
 
+    defp prefix_of(qname) do
+      case String.split(qname, ":", parts: 2) do
+        [_local] -> nil
+        [prefix, _local] -> prefix
+      end
+    end
+
     defp resolve_name(qname, bindings, kind) do
       case String.split(qname, ":", parts: 2) do
         [local] when kind == :element -> {Map.get(bindings, :default), local}
@@ -110,15 +118,17 @@ defmodule ExSchematron.Xml do
     index(root)
   end
 
+  # Id 0 is the XPath document node: "/" selects it, the root element is its child.
   defp index(root_tree) do
-    {root_id, nodes, _next_id} = index_node(root_tree, nil, 0, %{})
-    %Document{nodes: nodes, root_id: root_id}
+    {element_id, nodes, _next_id} = index_node(root_tree, 0, 1, %{})
+    document = %Node{id: 0, parent_id: nil, kind: :document, children: [element_id]}
+    %Document{nodes: Map.put(nodes, 0, document), root_id: 0}
   end
 
-  defp index_node({:element, name, attrs, children}, parent_id, id, nodes) do
+  defp index_node({:element, name, prefix, attrs, children}, parent_id, id, nodes) do
     {attr_ids, next_id, nodes} =
-      Enum.reduce(attrs, {[], id + 1, nodes}, fn {attr_name, value}, {ids, attr_id, acc} ->
-        attr_node = %Node{id: attr_id, parent_id: id, kind: :attribute, name: attr_name, value: value}
+      Enum.reduce(attrs, {[], id + 1, nodes}, fn {attr_name, attr_prefix, value}, {ids, attr_id, acc} ->
+        attr_node = %Node{id: attr_id, parent_id: id, kind: :attribute, name: attr_name, prefix: attr_prefix, value: value}
         {[attr_id | ids], attr_id + 1, Map.put(acc, attr_id, attr_node)}
       end)
 
@@ -133,13 +143,14 @@ defmodule ExSchematron.Xml do
       parent_id: parent_id,
       kind: :element,
       name: name,
+      prefix: prefix,
       children: Enum.reverse(attr_ids) ++ Enum.reverse(child_ids)
     }
 
     {id, Map.put(nodes, id, node), next_id}
   end
 
-  defp index_child({:element, _name, _attrs, _children} = element, parent_id, id, nodes) do
+  defp index_child({:element, _name, _prefix, _attrs, _children} = element, parent_id, id, nodes) do
     {new_id, nodes, next_id} = index_node(element, parent_id, id, nodes)
     {new_id, nodes, next_id}
   end
@@ -174,7 +185,7 @@ defmodule ExSchematron.Xml do
   @spec string_value(Document.t(), non_neg_integer()) :: binary()
   def string_value(doc, id) do
     case node(doc, id) do
-      %Node{kind: :element} = element -> element |> descendant_text(doc) |> IO.iodata_to_binary()
+      %Node{kind: kind} = container when kind in [:element, :document] -> container |> descendant_text(doc) |> IO.iodata_to_binary()
       %Node{value: value} -> value
     end
   end
@@ -182,7 +193,7 @@ defmodule ExSchematron.Xml do
   defp descendant_text(%Node{kind: :text, value: value}, _doc), do: value
   defp descendant_text(%Node{kind: :attribute}, _doc), do: []
 
-  defp descendant_text(%Node{kind: :element} = element, doc) do
+  defp descendant_text(%Node{} = element, doc) do
     for child_id <- element.children, do: descendant_text(node(doc, child_id), doc)
   end
 end
