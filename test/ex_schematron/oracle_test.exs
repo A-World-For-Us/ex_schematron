@@ -19,11 +19,8 @@ defmodule ExSchematron.OracleTest do
   ]
 
   setup_all do
-    module = ExSchematron.Generated.BrFrFlux2Cii
-
-    unless Code.ensure_loaded?(module) do
-      [{^module, _binary} | _rest] = Code.compile_file(Path.join(__DIR__, "../../gen/br_fr_flux2_cii.ex"))
-    end
+    sch_source = File.read!(Path.join(@fixtures, "schematron/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch"))
+    module = ExSchematron.compile!(sch_source, ExSchematron.OracleTest.BrFrFlux2Cii)
 
     {verdicts, _bindings} = Code.eval_file(Path.join(@fixtures, "oracle_verdicts.exs"))
     {:ok, validator: module, verdicts: verdicts}

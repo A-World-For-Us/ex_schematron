@@ -3,10 +3,7 @@ defmodule ExSchematron.SchTest do
 
   alias ExSchematron.Sch
 
-  @pilot Path.join(
-           System.get_env("RFE_SPECS", "/home/arch/git/awfus/rfe_specs"),
-           "FNFE_SCHEMATRONS_FR_CTC_V1.3.1_2026_04_30/2.BR-FR-CTC-Flux2-Schematron_UBL_ET_CII_FX_V1.3.1/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch"
-         )
+  @pilot Path.join(__DIR__, "../fixtures/schematron/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch")
 
   @minimal """
   <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">

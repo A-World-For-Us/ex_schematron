@@ -1,12 +1,12 @@
-# Differential oracle: compares our generated module's verdicts with Saxon SVRL
+# Differential oracle: compares our compiled module's verdicts with Saxon SVRL
 # references, mutant by mutant.
 #
-#   mix run scripts/diff_oracle.exs GENERATED.ex MUTANTS_DIR SVRL_DIR
+#   mix run scripts/diff_oracle.exs SCHEMA.sch MUTANTS_DIR SVRL_DIR
 
 alias ExSchematron.Xml
 
-[generated_path, mutants_dir, svrl_dir] = System.argv()
-[{module, _binary} | _rest] = Code.compile_file(generated_path)
+[sch_path, mutants_dir, svrl_dir] = System.argv()
+module = ExSchematron.compile!(File.read!(sch_path), OracleDiffValidator)
 
 svrl_ns = "http://purl.oclc.org/dsdl/svrl"
 

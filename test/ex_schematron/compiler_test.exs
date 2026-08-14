@@ -52,11 +52,11 @@ defmodule ExSchematron.CompilerTest do
   </inv:Invoice>
   """
 
-  defp compile_module!(name) do
-    source = @sch |> Sch.parse!() |> then(&Compiler.compile!(&1, name))
-    [{module, _binary} | _rest] = Code.compile_string(source)
-    module
+  defmodule UseValidator do
+    use ExSchematron, sch: Path.expand("../fixtures/schematron/minimal.sch", __DIR__)
   end
+
+  defp compile_module!(name), do: ExSchematron.compile!(@sch, name)
 
   test "a conforming document yields no violation" do
     module = compile_module!(CompilerTestValid)
@@ -106,11 +106,18 @@ defmodule ExSchematron.CompilerTest do
     </schema>
     """
 
-    source = sch |> Sch.parse!() |> then(&Compiler.compile!(&1, CompilerTestFirstMatch))
-    [{module, _binary} | _rest] = Code.compile_string(source)
+    module = ExSchematron.compile!(sch, CompilerTestFirstMatch)
 
     rules = for violation <- module.validate(@valid), do: violation.rule
     assert rules == ["FIRST"]
+  end
+
+  test "use ExSchematron injects validate/1 at compile time" do
+    valid = ~s(<inv:Invoice xmlns:inv="urn:invoice"><inv:ID>FAC-1</inv:ID></inv:Invoice>)
+    invalid = ~s(<inv:Invoice xmlns:inv="urn:invoice"><inv:ID>IDENTIFIANT TROP LONG</inv:ID></inv:Invoice>)
+
+    assert UseValidator.validate(valid) == []
+    assert [%{rule: "USE-LEN-1"}] = UseValidator.validate(invalid)
   end
 
   test "unknown function raises at generation with the location" do
@@ -122,7 +129,7 @@ defmodule ExSchematron.CompilerTest do
     """
 
     assert_raise Compiler.Error, ~r/unsupported function frobnicate\/1 in check "X"/, fn ->
-      sch |> Sch.parse!() |> Compiler.compile!(CompilerTestUnknownFn)
+      sch |> Sch.parse!() |> Compiler.build_body!()
     end
   end
 
@@ -134,7 +141,7 @@ defmodule ExSchematron.CompilerTest do
     """
 
     assert_raise Compiler.Error, ~r/undeclared namespace prefix "foo"/, fn ->
-      sch |> Sch.parse!() |> Compiler.compile!(CompilerTestUnknownNs)
+      sch |> Sch.parse!() |> Compiler.build_body!()
     end
   end
 end
