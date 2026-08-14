@@ -9,9 +9,14 @@ defmodule ExSchematron.Xml do
   """
 
   defmodule Document do
-    defstruct nodes: %{}, root_id: nil
+    @moduledoc "name_index maps `{:element | :attribute, name}` to node ids in document order."
+    defstruct nodes: %{}, root_id: nil, name_index: %{}
 
-    @type t :: %__MODULE__{nodes: %{non_neg_integer() => ExSchematron.Xml.Node.t()}, root_id: non_neg_integer()}
+    @type t :: %__MODULE__{
+            nodes: %{non_neg_integer() => ExSchematron.Xml.Node.t()},
+            root_id: non_neg_integer(),
+            name_index: %{{:element | :attribute, ExSchematron.Xml.Node.name()} => [non_neg_integer()]}
+          }
   end
 
   defmodule Node do
@@ -125,7 +130,20 @@ defmodule ExSchematron.Xml do
   defp index(root_tree) do
     {element_id, nodes, _next_id} = index_node(root_tree, 0, 1, %{})
     document = %Node{id: 0, parent_id: nil, kind: :document, children: [element_id]}
-    %Document{nodes: Map.put(nodes, 0, document), root_id: 0}
+    nodes = Map.put(nodes, 0, document)
+
+    name_index =
+      nodes
+      |> Enum.sort()
+      |> Enum.reduce(%{}, fn {id, node}, index ->
+        case node.kind do
+          kind when kind in [:element, :attribute] -> Map.update(index, {kind, node.name}, [id], &[id | &1])
+          _other -> index
+        end
+      end)
+      |> Map.new(fn {key, ids} -> {key, Enum.reverse(ids)} end)
+
+    %Document{nodes: nodes, root_id: 0, name_index: name_index}
   end
 
   defp index_node({:element, name, prefix, attrs, children}, parent_id, id, nodes) do

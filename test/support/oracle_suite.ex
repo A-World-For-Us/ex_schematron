@@ -79,6 +79,7 @@ defmodule ExSchematron.OracleSuite do
   def pairs, do: @pairs
 
   def sch_path(pair), do: Path.join([@fixtures, "schematron", pair.sch])
+  def validator(pair), do: Module.concat(ExSchematron.OracleValidators, Macro.camelize(Atom.to_string(pair.key)))
   def invoice_path(invoice), do: Path.join([@fixtures, "invoices", invoice])
   def manifest_path(pair), do: Path.join([@fixtures, "oracle", "#{pair.key}.exs"])
 

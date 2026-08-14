@@ -72,7 +72,7 @@ failures =
     File.mkdir_p!(Path.dirname(manifest))
     File.write!(manifest, inspect(verdicts, limit: :infinity, printable_limit: :infinity, pretty: true) <> "\n")
 
-    module = ExSchematron.compile_file!(OracleSuite.sch_path(pair), Module.concat(OracleRefresh, pair.key))
+    module = OracleSuite.validator(pair)
 
     pair_failures =
       mutants

@@ -54,11 +54,15 @@ defmodule ExSchematron.Compiler do
     function_defs = Enum.map(schema.functions, &compile_function(&1, base_env))
     globals_def = compile_globals(global_lets, base_env)
 
+    Process.delete({__MODULE__, :codelist_registry})
+
     {pattern_defs, pattern_calls} =
       schema.patterns
       |> Enum.with_index()
       |> Enum.map(fn {pattern, index} -> compile_pattern(pattern, index, base_env, global_names) end)
       |> Enum.unzip()
+
+    codelist_definitions = codelist_defs()
 
     quote do
       @doc "Validates an XML binary (or parsed document). Returns every violation."
@@ -74,6 +78,8 @@ defmodule ExSchematron.Compiler do
       unquote_splicing(List.flatten(pattern_defs))
 
       unquote_splicing(function_defs)
+
+      unquote_splicing(codelist_definitions)
 
       # A schematron may declare helper functions that none of its rules call;
       # referencing them here keeps the unused-function check quiet.
@@ -144,8 +150,7 @@ defmodule ExSchematron.Compiler do
     # than 255 free variables on the BEAM, and some patterns exceed 300 rules.
     set_exprs =
       Enum.map(rules, fn {rule, rule_index} ->
-        match_expr = compile_context(rule.context, %{env | where: "context of rule #{rule_index} in pattern #{inspect(pattern.id)}"})
-        quote do: XP.match_set(unquote(match_expr))
+        compile_context(rule.context, %{env | where: "context of rule #{rule_index} in pattern #{inspect(pattern.id)}"})
       end)
 
     dispatch_clauses =
@@ -162,7 +167,7 @@ defmodule ExSchematron.Compiler do
         defp unquote(pattern_fun)(doc, globals) do
           rule_sets = [unquote_splicing(set_exprs)]
 
-          Enum.flat_map(XP.all_node_ids(doc), fn node_id ->
+          Enum.flat_map(XP.matched_ids(rule_sets), fn node_id ->
             unquote(dispatch)
           end)
         end
@@ -239,11 +244,114 @@ defmodule ExSchematron.Compiler do
   end
 
   # A rule @context is an XSLT match pattern: unanchored paths match anywhere.
+  # Compiles to a MapSet of node ids — bottom-up through the document's name
+  # index whenever the pattern reduces to child/attribute name steps with
+  # boolean predicates, top-down as a plain path evaluation otherwise.
   defp compile_context(context_source, env) do
     ast = parse_source(context_source, env)
     env = %{env | ctx: quote(do: {:node, doc.root_id})}
-    compile_expr(anchor_context(ast, env), env)
+    anchored = anchor_context(ast, env)
+
+    try do
+      compile_context_reverse(anchored, env)
+    catch
+      :forward_fallback ->
+        quote do: XP.match_set(unquote(compile_expr(anchored, env)))
+    end
   end
+
+  defp compile_context_reverse(anchored, env) do
+    anchored
+    |> flatten_context()
+    |> Enum.map(fn steps -> compile_reverse_chain(steps, env) end)
+    |> Enum.reduce(fn set_expr, acc -> quote do: MapSet.union(unquote(acc), unquote(set_expr)) end)
+  end
+
+  defp flatten_context({:union, left, right}), do: flatten_context(left) ++ flatten_context(right)
+  defp flatten_context({:path, :root, steps}), do: [steps]
+
+  defp flatten_context({:path, {:expr, inner}, steps}) do
+    for inner_steps <- flatten_context(inner), do: inner_steps ++ steps
+  end
+
+  # "(...)[pred]": for boolean predicates, filtering the set is per-node, so the
+  # predicates can ride on the last step of every branch.
+  defp flatten_context({:filter, inner, predicates}) do
+    for steps <- flatten_context(inner) do
+      case List.pop_at(steps, -1) do
+        {{:step, axis, test, step_predicates}, front} -> front ++ [{:step, axis, test, step_predicates ++ predicates}]
+        _empty -> throw(:forward_fallback)
+      end
+    end
+  end
+
+  defp flatten_context(_other), do: throw(:forward_fallback)
+
+  defp compile_reverse_chain(steps, env) do
+    {absolute?, steps} =
+      case steps do
+        [{:step, :descendant_or_self, {:kind, :node}, []} | rest] -> {false, rest}
+        _anchored_at_root -> {true, steps}
+      end
+
+    if steps == [], do: throw(:forward_fallback)
+
+    entries =
+      Enum.map(steps, fn
+        {:step, :child, {:name, prefix, local}, predicates} ->
+          {:element, {resolve_optional_prefix!(prefix, env), local}, predicates}
+
+        {:step, :attribute, {:name, prefix, local}, predicates} ->
+          {:attribute, {resolve_optional_prefix!(prefix, env), local}, predicates}
+
+        _other ->
+          throw(:forward_fallback)
+      end)
+
+    unless entries |> Enum.drop(-1) |> Enum.all?(&match?({:element, _name, _preds}, &1)) do
+      throw(:forward_fallback)
+    end
+
+    chain =
+      entries
+      |> Enum.reverse()
+      |> Enum.map(fn {kind, name, predicates} ->
+        {:{}, [], [kind, Macro.escape(name), compile_reverse_predicates(predicates, env)]}
+      end)
+
+    quote do: XP.match_set_reverse(doc, unquote(chain), unquote(absolute?))
+  end
+
+  defp compile_reverse_predicates([], _env), do: nil
+
+  defp compile_reverse_predicates(predicates, env) do
+    if Enum.any?(predicates, fn predicate -> match?({:lit, _value}, predicate) end) do
+      throw(:forward_fallback)
+    end
+
+    item_var = Macro.var(:match_item, __MODULE__)
+    pred_env = %{env | ctx: item_var, position: nil, size: nil}
+
+    compiled =
+      try do
+        Enum.map(predicates, fn predicate -> quote do: XP.ebv(unquote(compile_expr(predicate, pred_env))) end)
+      rescue
+        # position()/last() or another construct only the forward path handles.
+        _error in [Error] -> throw(:forward_fallback)
+      end
+
+    conjunction = Enum.reduce(compiled, fn pred, acc -> quote do: unquote(acc) and unquote(pred) end)
+
+    quote do
+      fn unquote(item_var) ->
+        _ = unquote(item_var)
+        unquote(conjunction)
+      end
+    end
+  end
+
+  defp resolve_optional_prefix!(nil, _env), do: nil
+  defp resolve_optional_prefix!(prefix, env), do: resolve_prefix!(prefix, env)
 
   defp anchor_context({:union, left, right}, env), do: {:union, anchor_context(left, env), anchor_context(right, env)}
   defp anchor_context({:path, :root, steps}, _env), do: {:path, :root, steps}
@@ -417,8 +525,10 @@ defmodule ExSchematron.Compiler do
          env
        )
        when is_binary(file) and is_integer(cl_id) do
-    values = codelist_values!(file, cl_id, env)
-    quote do: XP.codelist_member?(doc, unquote(Macro.escape(values)), unquote(compile_expr(checked_expr, env)))
+    # The same code list is referenced by many checks; one shared private
+    # function per list keeps the module AST small.
+    fun_name = register_codelist!(file, cl_id, env)
+    quote do: XP.codelist_member?(doc, unquote(fun_name)(), unquote(compile_expr(checked_expr, env)))
   end
 
   defp compile_expr({:path, origin, steps}, env) do
@@ -533,6 +643,36 @@ defmodule ExSchematron.Compiler do
   end
 
   # ----------------------------------------------------------- code lists
+
+  # Compilation-scoped registry of the code lists referenced so far, so each is
+  # emitted once as a private function definition.
+  defp register_codelist!(file, cl_id, env) do
+    key = {__MODULE__, :codelist_registry}
+    registry = Process.get(key, %{})
+
+    case Map.fetch(registry, {file, cl_id}) do
+      {:ok, {fun_name, _values}} ->
+        fun_name
+
+      :error ->
+        values = codelist_values!(file, cl_id, env)
+        fun_name = :"codelist_#{map_size(registry)}"
+        Process.put(key, Map.put(registry, {file, cl_id}, {fun_name, values}))
+        fun_name
+    end
+  end
+
+  defp codelist_defs do
+    key = {__MODULE__, :codelist_registry}
+    registry = Process.get(key, %{})
+    Process.delete(key)
+
+    for {_file_and_id, {fun_name, values}} <- Enum.sort(registry) do
+      quote do
+        defp unquote(fun_name)(), do: unquote(Macro.escape(values))
+      end
+    end
+  end
 
   defp codelist_values!(file, cl_id, env) do
     unless env.base_dir do

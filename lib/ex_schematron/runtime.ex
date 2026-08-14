@@ -455,13 +455,50 @@ defmodule ExSchematron.Runtime do
   @spec root(Xml.Document.t()) :: seq()
   def root(doc), do: [{:node, doc.root_id}]
 
-  @doc "Every node id in document order (used to drive schematron rule matching)."
-  @spec all_node_ids(Xml.Document.t()) :: [non_neg_integer()]
-  def all_node_ids(doc), do: doc.nodes |> Map.keys() |> Enum.sort()
-
   @doc "Node-id membership set of a node sequence (schematron rule match sets)."
   @spec match_set(seq()) :: MapSet.t()
   def match_set(seq), do: MapSet.new(seq, fn {:node, id} -> id end)
+
+  @doc """
+  Match set of an anchored location pattern (`//a/b/c[pred]`), computed upward
+  from the name-index candidates of the last step instead of walking the whole
+  tree — the generator emits this for every context it can reduce.
+
+  `chain` is last step first: `{kind, name, pred_fun | nil}` tuples where
+  `pred_fun` takes the node item and returns a boolean. With `absolute?` the
+  chain must reach the document node.
+  """
+  @spec match_set_reverse(Xml.Document.t(), [tuple()], boolean()) :: MapSet.t()
+  def match_set_reverse(doc, [{last_kind, last_name, last_pred} | ancestors], absolute?) do
+    doc.name_index
+    |> Map.get({last_kind, last_name}, [])
+    |> Enum.filter(fn id ->
+      (last_pred == nil or last_pred.({:node, id})) and
+        ancestors_match?(doc, Xml.node(doc, id).parent_id, ancestors, absolute?)
+    end)
+    |> MapSet.new()
+  end
+
+  defp ancestors_match?(doc, parent_id, [], true) do
+    parent_id != nil and Xml.node(doc, parent_id).kind == :document
+  end
+
+  defp ancestors_match?(_doc, _parent_id, [], false), do: true
+  defp ancestors_match?(_doc, nil, _chain, _absolute?), do: false
+
+  defp ancestors_match?(doc, parent_id, [{:element, name, pred} | rest], absolute?) do
+    parent = Xml.node(doc, parent_id)
+
+    parent.kind == :element and parent.name == name and
+      (pred == nil or pred.({:node, parent_id})) and
+      ancestors_match?(doc, parent.parent_id, rest, absolute?)
+  end
+
+  @doc "Document-ordered ids of every node belonging to at least one match set."
+  @spec matched_ids([MapSet.t()]) :: [non_neg_integer()]
+  def matched_ids(rule_sets) do
+    rule_sets |> Enum.reduce(MapSet.new(), &MapSet.union(&2, &1)) |> Enum.sort()
+  end
 
   @doc "xsl:value-of on a sequence: space-joined string values."
   @spec value_of(Xml.Document.t(), seq()) :: binary()
@@ -607,11 +644,24 @@ defmodule ExSchematron.Runtime do
     document_order(left ++ right)
   end
 
+  # Child/attribute/self steps over disjoint parents already come out strictly
+  # ascending, which is the overwhelmingly common case in compiled checks; the
+  # O(n) sortedness check skips the uniq+sort.
   defp document_order(nodes) do
-    nodes
-    |> Enum.uniq()
-    |> Enum.sort_by(fn {:node, id} -> id end)
+    if strictly_ascending?(nodes) do
+      nodes
+    else
+      nodes |> Enum.uniq() |> Enum.sort_by(fn {:node, id} -> id end)
+    end
   end
+
+  defp strictly_ascending?([{:node, first_id} | [{:node, second_id} | _] = rest]) when first_id < second_id do
+    strictly_ascending?(rest)
+  end
+
+  defp strictly_ascending?([{:node, _id}]), do: true
+  defp strictly_ascending?([]), do: true
+  defp strictly_ascending?(_nodes), do: false
 
   # Reverse axes are produced nearest-first so positional predicates count backwards,
   # as XPath requires; `step/5` restores document order afterwards.

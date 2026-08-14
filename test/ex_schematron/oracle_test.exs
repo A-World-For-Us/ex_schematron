@@ -15,7 +15,7 @@ for pair <- ExSchematron.OracleSuite.pairs() do
     @tag timeout: 300_000
     test "#{pair.key}: every mutant gets exactly the Saxon verdict" do
       pair = @pair
-      module = ExSchematron.compile_file!(OracleSuite.sch_path(pair), Module.concat(ExSchematron.OracleTest.Validators, pair.key))
+      module = OracleSuite.validator(pair)
       {verdicts, _bindings} = Code.eval_file(OracleSuite.manifest_path(pair))
       authored_ids = OracleSuite.authored_ids(pair)
 
