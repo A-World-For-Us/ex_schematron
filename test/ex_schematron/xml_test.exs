@@ -77,6 +77,15 @@ defmodule ExSchematron.XmlTest do
     assert id_element.name == {"urn:ubl", "ID"}
   end
 
+  test "xmlns=\"\" undeclares the default namespace" do
+    doc = Xml.parse!(~s(<Invoice xmlns="urn:ubl"><Extension xmlns=""><ID>1</ID></Extension></Invoice>))
+
+    [extension] = find_elements(doc, "Extension")
+    assert extension.name == {nil, "Extension"}
+    [id_element] = find_elements(doc, "ID")
+    assert id_element.name == {nil, "ID"}
+  end
+
   test "entities inside text produce a single text node" do
     doc = Xml.parse!(~s(<a>x &amp; y</a>))
     assert Xml.string_value(doc, doc.root_id) == "x & y"

@@ -88,6 +88,7 @@ defmodule ExSchematron.Xml do
     @impl true
     def handle_event(:cdata, chars, state), do: handle_event(:characters, chars, state)
 
+    defp collect_binding({"xmlns", ""}, bindings), do: Map.put(bindings, :default, nil)
     defp collect_binding({"xmlns", uri}, bindings), do: Map.put(bindings, :default, uri)
     defp collect_binding({"xmlns:" <> prefix, uri}, bindings), do: Map.put(bindings, prefix, uri)
     defp collect_binding(_attr, bindings), do: bindings
