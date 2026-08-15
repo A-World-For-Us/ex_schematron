@@ -35,6 +35,21 @@ defmodule ExSchematron.SchTest do
     assert %Sch.Check{type: :report, id: "BR-2"} = report_check
   end
 
+  test "name in a message desugars to value-of" do
+    with_names =
+      String.replace(
+        @minimal,
+        "<report test=\"ram:Legacy\" id=\"BR-2\">Legacy présent.</report>",
+        "<report test=\"ram:Legacy\" id=\"BR-2\">Dans <name/> : <name path=\"@attr\"/>.</report>"
+      )
+
+    schema = Sch.parse!(with_names)
+    [%Sch.Pattern{rules: [rule]}] = schema.patterns
+    report = List.last(rule.checks)
+
+    assert [{:text, _}, {:value_of, "name()"}, {:text, _}, {:value_of, "@attr"}, {:text, _}] = report.message
+  end
+
   test "raises on unsupported constructs" do
     unsupported = String.replace(@minimal, "<title>Titre</title>", "<include href='other.sch'/>")
     assert_raise Sch.Error, ~r/unsupported pattern element/, fn -> Sch.parse!(unsupported) end

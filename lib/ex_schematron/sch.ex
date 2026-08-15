@@ -138,6 +138,11 @@ defmodule ExSchematron.Sch do
         %Xml.Node{name: {@sch_ns, "value-of"}} = value_of ->
           {:value_of, attr!(doc, value_of, "select")}
 
+        # <name/> is the name of the context node, <name path="p"/> the value
+        # of p (ISO 2016 Annex H clause 4): both desugar to value-of.
+        %Xml.Node{name: {@sch_ns, "name"}} = name_element ->
+          {:value_of, attr(doc, name_element, "path") || "name()"}
+
         %Xml.Node{name: name} ->
           raise Error, message: "unsupported element #{inspect(name)} in message of #{inspect(attr(doc, check_element, "id"))}"
       end)

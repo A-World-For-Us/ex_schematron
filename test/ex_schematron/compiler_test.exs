@@ -131,6 +131,22 @@ defmodule ExSchematron.CompilerTest do
     assert module.validate(@valid) == []
   end
 
+  test "sch:name renders the context node name in the message" do
+    sch = """
+    <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+      <ns prefix="inv" uri="urn:invoice"/>
+      <pattern id="P">
+        <rule context="inv:Type">
+          <report test="true()" id="NAME-1">Élément <name/>, type <name path="../inv:ID"/>.</report>
+        </rule>
+      </pattern>
+    </schema>
+    """
+
+    module = ExSchematron.compile!(sch, CompilerTestSchName)
+    assert [%{rule: "NAME-1", message: "Élément inv:Type, type FAC-1."}] = module.validate(@valid)
+  end
+
   test "use ExSchematron injects validate/1 at compile time" do
     valid = ~s(<inv:Invoice xmlns:inv="urn:invoice"><inv:ID>FAC-1</inv:ID></inv:Invoice>)
     invalid = ~s(<inv:Invoice xmlns:inv="urn:invoice"><inv:ID>IDENTIFIANT TROP LONG</inv:ID></inv:Invoice>)
