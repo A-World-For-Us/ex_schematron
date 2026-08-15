@@ -40,6 +40,26 @@ defmodule ExSchematron.SchTest do
     assert_raise Sch.Error, ~r/unsupported pattern element/, fn -> Sch.parse!(unsupported) end
   end
 
+  test "raises when a variable is multiply defined in one scope" do
+    duplicated =
+      String.replace(@minimal, ~s(<let name="id" value="ram:ID"/>), ~s(<let name="id" value="ram:ID"/><let name="id" value="ram:ID"/>))
+
+    assert_raise Sch.Error, ~r/variable \$id multiply defined in rule/, fn -> Sch.parse!(duplicated) end
+  end
+
+  test "shadowing a let of an outer scope stays legal" do
+    shadowing =
+      String.replace(
+        @minimal,
+        "<pattern id=\"P1\">",
+        "<let name='id' value=\"'global'\"/><pattern id=\"P1\"><let name='id' value=\"'pattern'\"/>"
+      )
+
+    schema = Sch.parse!(shadowing)
+    assert [{{nil, "id"}, "'global'"}] = schema.lets
+    assert [%Sch.Pattern{lets: [{{nil, "id"}, "'pattern'"}]}] = schema.patterns
+  end
+
   test "raises on unsupported query binding" do
     xslt1 = String.replace(@minimal, ~s(queryBinding="xslt2"), ~s(queryBinding="xslt"))
     assert_raise Sch.Error, ~r/queryBinding/, fn -> Sch.parse!(xslt1) end

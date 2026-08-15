@@ -73,7 +73,7 @@ defmodule ExSchematron.Sch do
   end
 
   defp parse_schema_child(doc, %Xml.Node{name: {@sch_ns, "let"}} = element, schema) do
-    %{schema | lets: [parse_let(doc, element) | schema.lets]}
+    %{schema | lets: add_let(schema.lets, doc, element, "schema")}
   end
 
   defp parse_schema_child(doc, %Xml.Node{name: {@sch_ns, "pattern"}} = element, schema) do
@@ -103,7 +103,7 @@ defmodule ExSchematron.Sch do
     |> Enum.reduce(initial, fn element, pattern ->
       case element.name do
         {@sch_ns, "title"} -> %{pattern | title: Xml.string_value(doc, element.id)}
-        {@sch_ns, "let"} -> %{pattern | lets: [parse_let(doc, element) | pattern.lets]}
+        {@sch_ns, "let"} -> %{pattern | lets: add_let(pattern.lets, doc, element, "pattern #{inspect(pattern.id)}")}
         {@sch_ns, "rule"} -> %{pattern | rules: [parse_rule(doc, element) | pattern.rules]}
         other -> raise Error, message: "unsupported pattern element #{inspect(other)} in pattern #{inspect(pattern.id)}"
       end
@@ -118,7 +118,7 @@ defmodule ExSchematron.Sch do
     |> element_children(rule_element)
     |> Enum.reduce(initial, fn element, rule ->
       case element.name do
-        {@sch_ns, "let"} -> %{rule | lets: [parse_let(doc, element) | rule.lets]}
+        {@sch_ns, "let"} -> %{rule | lets: add_let(rule.lets, doc, element, "rule #{inspect(rule.context)}")}
         {@sch_ns, "assert"} -> %{rule | checks: [parse_check(doc, element, :assert) | rule.checks]}
         {@sch_ns, "report"} -> %{rule | checks: [parse_check(doc, element, :report) | rule.checks]}
         other -> raise Error, message: "unsupported rule element #{inspect(other)} in rule #{inspect(rule.context)}"
@@ -153,6 +153,19 @@ defmodule ExSchematron.Sch do
 
   defp parse_let(doc, let_element) do
     {parse_var_name(attr!(doc, let_element, "name")), attr!(doc, let_element, "value")}
+  end
+
+  # A variable multiply defined in one scope is an error (ISO 2016 5.4.5 clause
+  # 3); shadowing a let of an outer scope stays legal.
+  defp add_let(lets, doc, let_element, where) do
+    {{prefix, local} = name, _value} = let = parse_let(doc, let_element)
+
+    if List.keymember?(lets, name, 0) do
+      qualified = if prefix, do: "#{prefix}:#{local}", else: local
+      raise Error, message: "variable $#{qualified} multiply defined in #{where}"
+    end
+
+    [let | lets]
   end
 
   defp parse_function(doc, function_element) do
