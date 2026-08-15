@@ -14,7 +14,7 @@ defmodule ExSchematron.ConformanceTest do
   @moduletag :conformance
 
   if ConformanceSuite.available?() do
-    {manifest, _bindings} = Code.eval_file(ConformanceSuite.manifest_path())
+    manifest = ExSchematron.FrozenCorpus.load!(ConformanceSuite.manifest_path())
     testcases = ConformanceSuite.testcases()
 
     @keys Enum.map(testcases, & &1.key)

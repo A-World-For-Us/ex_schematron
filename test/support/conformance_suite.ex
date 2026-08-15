@@ -63,6 +63,30 @@ defmodule ExSchematron.ConformanceSuite do
     Enum.map(testcase.schemas, &run_schema(testcase, &1))
   end
 
+  @doc "Freezes testcase results (`{testcase, outcomes, conforms?}`) into the manifest, sorted and stable."
+  def write_manifest!(results) do
+    passing = Enum.count(results, fn {_testcase, _outcomes, conforms?} -> conforms? end)
+
+    notes =
+      Map.new(results, fn {testcase, _outcomes, conforms?} ->
+        {testcase.key, "expect #{testcase.expect}#{if conforms?, do: "", else: " -- NOT CONFORMING"}"}
+      end)
+
+    ExSchematron.FrozenCorpus.write!(
+      @manifest,
+      Enum.map(results, fn {testcase, outcomes, _conforms?} -> {testcase.key, outcomes} end),
+      header: """
+      Frozen outcomes of the ISO Schematron conformance corpus, one entry per
+      testcase file, one outcome per schema of that testcase. Replayed by
+      `test/ex_schematron/conformance_test.exs`; regenerate with
+      `MIX_ENV=test mix run scripts/refresh_conformance.exs`.
+
+      Conforming: #{passing}/#{length(results)}.
+      """,
+      comment: fn key, _outcomes -> Map.fetch!(notes, key) end
+    )
+  end
+
   @doc "Whether an outcome list matches what the testcase says a conforming processor must produce."
   def conforms?(testcase, outcomes) do
     Enum.all?(outcomes, &conforming_outcome?(testcase.expect, &1))

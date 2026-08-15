@@ -105,6 +105,39 @@ defmodule ExSchematron.OracleSuite do
   end
 
   @doc """
+  Our validator's outcome for one document, in manifest form: the sorted
+  comparison keys of its violations. A rule that raised at runtime yields a
+  tagged tuple instead -- runtime errors are never frozen, so the outcome
+  always drifts against the manifest.
+  """
+  def observed_verdict(module, xml, authored_ids) do
+    violations = module.validate(xml)
+    errors = for violation <- violations, violation.type == :error, do: violation.message
+
+    keys =
+      for violation <- violations, violation.type != :error do
+        verdict_key(violation.rule, violation.test, authored_ids)
+      end
+
+    case errors do
+      [] -> Enum.sort(keys)
+      _some -> {:runtime_errors, errors, Enum.sort(keys)}
+    end
+  end
+
+  @doc "Freezes a pair's Saxon verdicts into its manifest, sorted and stable."
+  def write_manifest!(pair, verdicts) do
+    ExSchematron.FrozenCorpus.write!(manifest_path(pair), verdicts,
+      header: """
+      Frozen Saxon verdicts of the #{pair.key} oracle pair: one entry per mutant,
+      the sorted comparison keys of its failed asserts and successful reports.
+      Replayed by `test/ex_schematron/oracle_test.exs`; regenerate with
+      `RFE_SPECS=... MIX_ENV=test mix run scripts/refresh_oracle.exs #{pair.key}`.
+      """
+    )
+  end
+
+  @doc """
   Comparison key of one verdict. Reference XSLTs may synthesize ids absent from
   the schematron source (Factur-X); those cannot be reproduced, so a verdict is
   keyed by its authored id when the schematron has one, by a digest of its test

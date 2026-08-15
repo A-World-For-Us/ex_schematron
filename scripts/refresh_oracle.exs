@@ -7,6 +7,7 @@
 # Also diffs our compiled modules against the fresh verdicts and exits non-zero
 # on any divergence, so a refresh doubles as a full differential run.
 
+alias ExSchematron.FrozenCorpus
 alias ExSchematron.OracleSuite
 alias ExSchematron.Xml
 
@@ -68,37 +69,19 @@ failures =
         {name, svrl_dir |> Path.join(name <> ".xml") |> svrl_failed_keys.(authored_ids) |> Enum.sort()}
       end)
 
-    manifest = OracleSuite.manifest_path(pair)
-    File.mkdir_p!(Path.dirname(manifest))
-    File.write!(manifest, inspect(verdicts, limit: :infinity, printable_limit: :infinity, pretty: true) <> "\n")
+    OracleSuite.write_manifest!(pair, verdicts)
 
     module = OracleSuite.validator(pair)
 
+    observed =
+      FrozenCorpus.run_all(mutants, fn _name, xml ->
+        OracleSuite.observed_verdict(module, xml, authored_ids)
+      end)
+
     pair_failures =
-      mutants
-      |> Task.async_stream(
-        fn {name, xml} ->
-          violations = module.validate(xml)
-          errors = for violation <- violations, violation.type == :error, do: violation.message
-
-          actual =
-            for violation <- violations, violation.type != :error do
-              OracleSuite.verdict_key(violation.rule, violation.test, authored_ids)
-            end
-
-          actual = Enum.sort(actual)
-          expected = Map.fetch!(verdicts, name)
-
-          if actual == expected and errors == [] do
-            []
-          else
-            [%{pair: pair.key, mutant: name, missing: expected -- actual, extra: actual -- expected, errors: errors}]
-          end
-        end,
-        ordered: false,
-        timeout: 120_000
-      )
-      |> Enum.flat_map(fn {:ok, result} -> result end)
+      for mismatch <- FrozenCorpus.drift(verdicts, observed).mismatches do
+        Map.put(mismatch, :pair, pair.key)
+      end
 
     total_verdicts = verdicts |> Map.values() |> Enum.map(&length/1) |> Enum.sum()
     IO.puts("#{pair.key}: #{map_size(verdicts)} verdicts (#{total_verdicts} failed-asserts), #{length(pair_failures)} mismatches")
@@ -106,10 +89,16 @@ failures =
   end)
 
 for failure <- Enum.take(failures, 30) do
-  IO.puts("\n#{failure.pair} / #{failure.mutant}")
-  if failure.missing != [], do: IO.puts("  manquants (FAUX NÉGATIFS): #{inspect(Enum.take(failure.missing, 10))}")
-  if failure.extra != [], do: IO.puts("  en trop (faux positifs): #{inspect(Enum.take(failure.extra, 10))}")
-  if failure.errors != [], do: IO.puts("  erreurs runtime: #{inspect(Enum.take(failure.errors, 3))}")
+  IO.puts("\n#{failure.pair} / #{failure.key}")
+
+  case failure do
+    %{observed: {:runtime_errors, errors, _keys}} ->
+      IO.puts("  erreurs runtime: #{inspect(Enum.take(errors, 3))}")
+
+    %{missing: missing, extra: extra} ->
+      if missing != [], do: IO.puts("  manquants (FAUX NÉGATIFS): #{inspect(Enum.take(missing, 10))}")
+      if extra != [], do: IO.puts("  en trop (faux positifs): #{inspect(Enum.take(extra, 10))}")
+  end
 end
 
 IO.puts("\ntotal mismatches: #{length(failures)}")
