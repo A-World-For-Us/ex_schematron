@@ -9,6 +9,7 @@ defmodule ExSchematron.Compiler do
   """
 
   alias ExSchematron.Sch
+  alias ExSchematron.Sch.Scopes
   alias ExSchematron.XPath.Parser
 
   # Quoting is alias-hygienic: XP./F./Xml. calls inside the quotes below expand
@@ -46,29 +47,20 @@ defmodule ExSchematron.Compiler do
 
     base_env = %Env{ns: schema.namespaces, functions: functions, base_dir: schema.base_dir}
 
-    # Pattern-level lets are hoisted to schema level, like SchXslt compiles them
-    # (global xsl:variable): the corpus references them across pattern boundaries.
-    # One that shadows a schema-level let keeps a separate globals key, so the
-    # schema value stays visible outside the declaring pattern.
-    schema_let_names = MapSet.new(schema.lets, fn {name, _value} -> name end)
-
-    global_entries =
-      Enum.map(schema.lets, fn {name, value} -> {var_key(name), name, value} end) ++
-        Enum.map(hoist_pattern_lets(schema.patterns), fn {name, value} ->
-          {global_key(name, schema_let_names), name, value}
-        end)
-
-    global_names = Enum.uniq(for {_key, name, _value} <- global_entries, do: name)
+    # Scoping (collision, shadowing, hoisting) is decided by Scopes; the
+    # compiler only transcribes its storage plan.
+    scopes = Scopes.resolve!(schema)
 
     function_defs = Enum.map(schema.functions, &compile_function(&1, base_env))
-    globals_def = compile_globals(global_entries, base_env)
+    globals_def = compile_globals(scopes.globals, base_env)
 
     Process.delete({__MODULE__, :codelist_registry})
 
     {pattern_defs, pattern_calls} =
       schema.patterns
+      |> Enum.zip(scopes.patterns)
       |> Enum.with_index()
-      |> Enum.map(fn {pattern, index} -> compile_pattern(pattern, index, base_env, global_names, schema_let_names) end)
+      |> Enum.map(fn {{pattern, pattern_scope}, index} -> compile_pattern(pattern, index, base_env, pattern_scope) end)
       |> Enum.unzip()
 
     codelist_definitions = codelist_defs()
@@ -101,27 +93,6 @@ defmodule ExSchematron.Compiler do
 
   # ---------------------------------------------------------------- globals
 
-  defp hoist_pattern_lets(patterns) do
-    all_lets = for pattern <- patterns, let <- pattern.lets, do: {let, pattern.id}
-
-    all_lets
-    |> Enum.group_by(fn {{name, _value}, _pattern_id} -> name end)
-    |> Enum.each(fn {name, declarations} ->
-      values = declarations |> Enum.map(fn {{_name, value}, _pattern_id} -> value end) |> Enum.uniq()
-
-      if length(values) > 1 do
-        pattern_ids = Enum.map(declarations, &elem(&1, 1))
-        raise Error, message: "pattern let $#{format_name(name)} declared with different values in patterns #{inspect(pattern_ids)}"
-      end
-    end)
-
-    all_lets |> Enum.map(&elem(&1, 0)) |> Enum.uniq_by(fn {name, _value} -> name end)
-  end
-
-  defp global_key(name, schema_let_names) do
-    if MapSet.member?(schema_let_names, name), do: :"#{var_key(name)}__pattern", else: var_key(name)
-  end
-
   defp compile_globals(global_entries, env) do
     ctx_var = Macro.var(:ctx, __MODULE__)
 
@@ -148,20 +119,12 @@ defmodule ExSchematron.Compiler do
 
   # ---------------------------------------------------------------- patterns
 
-  defp compile_pattern(%Sch.Pattern{} = pattern, index, env, global_names, schema_let_names) do
+  defp compile_pattern(%Sch.Pattern{} = pattern, index, env, pattern_scope) do
     pattern_fun = :"pattern_#{index}_#{sanitize(pattern.id || "anonymous")}"
 
-    env = Enum.reduce(global_names, env, fn name, env -> put_var(env, name, quote(do: globals.unquote(let_var(name)))) end)
-
-    # A let of this pattern that shadows a schema-level let applies here only:
-    # rebind the name to the pattern's own globals key.
     env =
-      Enum.reduce(pattern.lets, env, fn {name, _value}, env ->
-        if MapSet.member?(schema_let_names, name) do
-          put_var(env, name, quote(do: globals.unquote(Macro.var(global_key(name, schema_let_names), __MODULE__))))
-        else
-          env
-        end
+      Enum.reduce(pattern_scope.bindings, env, fn {name, key}, env ->
+        put_var(env, name, quote(do: globals.unquote(Macro.var(key, __MODULE__))))
       end)
 
     rules = Enum.with_index(pattern.rules)
@@ -847,10 +810,7 @@ defmodule ExSchematron.Compiler do
 
   defp put_var(env, name, ast), do: %{env | vars: Map.put(env.vars, name, ast)}
 
-  defp let_var(name), do: Macro.var(var_key(name), __MODULE__)
-
-  defp var_key({nil, local}), do: :"v_#{sanitize(local)}"
-  defp var_key({prefix, local}), do: :"v_#{sanitize("#{prefix}_#{local}")}"
+  defp let_var(name), do: Macro.var(Scopes.var_key(name), __MODULE__)
 
   defp format_name({nil, local}), do: local
   defp format_name({prefix, local}), do: "#{prefix}:#{local}"
