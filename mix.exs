@@ -8,8 +8,17 @@ defmodule ExSchematron.MixProject do
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps()
     ]
+  end
+
+  def cli do
+    [preferred_envs: ["test.conformance": :test]]
+  end
+
+  defp aliases do
+    ["test.conformance": ["test --only conformance"]]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

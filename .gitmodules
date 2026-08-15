@@ -1,0 +1,3 @@
+[submodule "test/fixtures/conformance"]
+	path = test/fixtures/conformance
+	url = https://github.com/Schematron/schematron-conformance.git
