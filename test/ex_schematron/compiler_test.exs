@@ -112,6 +112,25 @@ defmodule ExSchematron.CompilerTest do
     assert rules == ["FIRST"]
   end
 
+  test "a pattern let shadows a schema let in its own pattern only" do
+    sch = """
+    <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+      <ns prefix="inv" uri="urn:invoice"/>
+      <let name="foo" value="0"/>
+      <pattern id="SHADOWING">
+        <let name="foo" value="1"/>
+        <rule context="inv:Invoice"><assert test="$foo = 1" id="INNER">inner</assert></rule>
+      </pattern>
+      <pattern id="OTHER">
+        <rule context="inv:Invoice"><assert test="$foo = 0" id="OUTER">outer</assert></rule>
+      </pattern>
+    </schema>
+    """
+
+    module = ExSchematron.compile!(sch, CompilerTestLetShadowing)
+    assert module.validate(@valid) == []
+  end
+
   test "use ExSchematron injects validate/1 at compile time" do
     valid = ~s(<inv:Invoice xmlns:inv="urn:invoice"><inv:ID>FAC-1</inv:ID></inv:Invoice>)
     invalid = ~s(<inv:Invoice xmlns:inv="urn:invoice"><inv:ID>IDENTIFIANT TROP LONG</inv:ID></inv:Invoice>)

@@ -48,18 +48,27 @@ defmodule ExSchematron.Compiler do
 
     # Pattern-level lets are hoisted to schema level, like SchXslt compiles them
     # (global xsl:variable): the corpus references them across pattern boundaries.
-    global_lets = schema.lets ++ hoist_pattern_lets(schema.patterns)
-    global_names = Enum.map(global_lets, fn {name, _value} -> name end)
+    # One that shadows a schema-level let keeps a separate globals key, so the
+    # schema value stays visible outside the declaring pattern.
+    schema_let_names = MapSet.new(schema.lets, fn {name, _value} -> name end)
+
+    global_entries =
+      Enum.map(schema.lets, fn {name, value} -> {var_key(name), name, value} end) ++
+        Enum.map(hoist_pattern_lets(schema.patterns), fn {name, value} ->
+          {global_key(name, schema_let_names), name, value}
+        end)
+
+    global_names = Enum.uniq(for {_key, name, _value} <- global_entries, do: name)
 
     function_defs = Enum.map(schema.functions, &compile_function(&1, base_env))
-    globals_def = compile_globals(global_lets, base_env)
+    globals_def = compile_globals(global_entries, base_env)
 
     Process.delete({__MODULE__, :codelist_registry})
 
     {pattern_defs, pattern_calls} =
       schema.patterns
       |> Enum.with_index()
-      |> Enum.map(fn {pattern, index} -> compile_pattern(pattern, index, base_env, global_names) end)
+      |> Enum.map(fn {pattern, index} -> compile_pattern(pattern, index, base_env, global_names, schema_let_names) end)
       |> Enum.unzip()
 
     codelist_definitions = codelist_defs()
@@ -109,15 +118,20 @@ defmodule ExSchematron.Compiler do
     all_lets |> Enum.map(&elem(&1, 0)) |> Enum.uniq_by(fn {name, _value} -> name end)
   end
 
-  defp compile_globals(lets, env) do
+  defp global_key(name, schema_let_names) do
+    if MapSet.member?(schema_let_names, name), do: :"#{var_key(name)}__pattern", else: var_key(name)
+  end
+
+  defp compile_globals(global_entries, env) do
     ctx_var = Macro.var(:ctx, __MODULE__)
 
     {bindings, entries, _env} =
-      Enum.reduce(lets, {[], [], %{env | ctx: ctx_var, where: "schema-level let"}}, fn {name, value}, {bindings, entries, env} ->
-        var = let_var(name)
+      Enum.reduce(global_entries, {[], [], %{env | ctx: ctx_var, where: "schema-level let"}}, fn {key, name, value},
+                                                                                                 {bindings, entries, env} ->
+        var = Macro.var(key, __MODULE__)
         expr = compile_source(value, env)
         binding = quote do: unquote(var) = unquote(expr)
-        {[binding | bindings], [{var_key(name), var} | entries], put_var(env, name, var)}
+        {[binding | bindings], [{key, var} | entries], put_var(env, name, var)}
       end)
 
     map_ast = {:%{}, [], Enum.reverse(entries)}
@@ -134,10 +148,21 @@ defmodule ExSchematron.Compiler do
 
   # ---------------------------------------------------------------- patterns
 
-  defp compile_pattern(%Sch.Pattern{} = pattern, index, env, global_names) do
+  defp compile_pattern(%Sch.Pattern{} = pattern, index, env, global_names, schema_let_names) do
     pattern_fun = :"pattern_#{index}_#{sanitize(pattern.id || "anonymous")}"
 
     env = Enum.reduce(global_names, env, fn name, env -> put_var(env, name, quote(do: globals.unquote(let_var(name)))) end)
+
+    # A let of this pattern that shadows a schema-level let applies here only:
+    # rebind the name to the pattern's own globals key.
+    env =
+      Enum.reduce(pattern.lets, env, fn {name, _value}, env ->
+        if MapSet.member?(schema_let_names, name) do
+          put_var(env, name, quote(do: globals.unquote(Macro.var(global_key(name, schema_let_names), __MODULE__))))
+        else
+          env
+        end
+      end)
 
     rules = Enum.with_index(pattern.rules)
 
