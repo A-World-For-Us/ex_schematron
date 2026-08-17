@@ -110,8 +110,12 @@ defmodule ExSchematron.Xml do
 
     defp resolve_name(qname, bindings, kind) do
       case String.split(qname, ":", parts: 2) do
-        [local] when kind == :element -> {Map.get(bindings, :default), local}
-        [local] -> {nil, local}
+        [local] when kind == :element ->
+          {Map.get(bindings, :default), local}
+
+        [local] ->
+          {nil, local}
+
         [prefix, local] ->
           case Map.fetch(bindings, prefix) do
             {:ok, uri} -> {uri, local}

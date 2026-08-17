@@ -32,8 +32,11 @@ defmodule ExSchematron.MixProject do
 
   defp deps do
     [
-      {:saxy, "~> 1.6"},
-      {:decimal, "~> 2.0 or ~> 3.0"}
+      {:ex_schematron_xpath, path: "xpath"},
+      # Generated validators embed Decimal literals directly; the conformance
+      # suite drives Saxy itself to write testcase fixtures.
+      {:decimal, "~> 2.0 or ~> 3.0"},
+      {:saxy, "~> 1.6"}
     ]
   end
 end

@@ -3,36 +3,32 @@ defmodule ExSchematron.Compiler do
   Compiles a parsed schematron into the body of an Elixir validation module,
   as a quoted AST ready to be injected (`use ExSchematron` / `Module.create/3`).
 
-  The compiled module transcribes the schematron; all XPath semantics live in
-  `ExSchematron.Runtime`. Compilation raises on any XPath construct, function or
-  schematron form outside the supported table — never a silent skip.
+  The compiled module transcribes the schematron; XPath expressions are
+  compiled by `ExSchematron.XPath.Compiler` and all XPath semantics live in
+  `ExSchematron.Runtime`. This module owns what is Schematron- or
+  XSLT-specific: patterns, rules and checks, match-pattern contexts,
+  `xsl:function` definitions, and the `document()` code-list lookup. It
+  extends the XPath compiler through its `Env` hooks. Compilation raises on
+  any XPath construct, function or schematron form outside the supported
+  table — never a silent skip.
   """
 
   alias ExSchematron.Sch
   alias ExSchematron.Sch.Scopes
-  alias ExSchematron.XPath.Parser
+  alias ExSchematron.XPath.Compiler, as: XPC
 
-  # Quoting is alias-hygienic: XP./F./Xml. calls inside the quotes below expand
+  # Quoting is alias-hygienic: XP./Xml. calls inside the quotes below expand
   # to their full module names in the emitted AST.
   alias ExSchematron.Runtime, as: XP
-  alias ExSchematron.Runtime.Functions, as: F
   alias ExSchematron.Xml
 
   defmodule Error do
     defexception [:message]
   end
 
-  defmodule Env do
-    @moduledoc false
-    defstruct ns: %{},
-              vars: %{},
-              functions: %{},
-              base_dir: nil,
-              ctx: nil,
-              position: nil,
-              size: nil,
-              where: nil
-  end
+  # The variable the XPath compiler's emitted code reads the document from;
+  # every generated function binds it in its head.
+  @doc_var XPC.doc_var()
 
   @doc "Compiles a parsed schematron into a quoted module body defining `validate/1`."
   @spec build_body!(Sch.Schema.t()) :: Macro.t()
@@ -45,7 +41,11 @@ defmodule ExSchematron.Compiler do
 
     functions = Map.new(schema.functions, fn function -> {function.name, length(function.params)} end)
 
-    base_env = %Env{ns: schema.namespaces, functions: functions, base_dir: schema.base_dir}
+    base_env = %XPC.Env{
+      ns: schema.namespaces,
+      rewrite: fn ast, env -> codelist_rewrite(ast, env, schema.base_dir) end,
+      resolve_call: fn name, compiled_args, env -> resolve_function_call(name, compiled_args, env, functions) end
+    }
 
     # Scoping (collision, shadowing, hoisting) is decided by Scopes; the
     # compiler only transcribes its storage plan.
@@ -69,8 +69,8 @@ defmodule ExSchematron.Compiler do
       @doc "Validates an XML binary (or parsed document). Returns every violation."
       def validate(xml) when is_binary(xml), do: validate(Xml.parse!(xml))
 
-      def validate(%Xml.Document{} = doc) do
-        globals = globals(doc)
+      def validate(%Xml.Document{} = unquote(@doc_var)) do
+        globals = globals(unquote(@doc_var))
         Enum.concat([unquote_splicing(pattern_calls)])
       end
 
@@ -89,6 +89,9 @@ defmodule ExSchematron.Compiler do
         unquote(Enum.map(functions, fn {name, arity} -> capture_ast(function_fun_name(name), arity + 1) end))
       end
     end
+  rescue
+    # One public error type for generation failures, whichever layer raised.
+    error in [XPC.Error] -> raise Error, message: Exception.message(error)
   end
 
   # ---------------------------------------------------------------- globals
@@ -100,16 +103,16 @@ defmodule ExSchematron.Compiler do
       Enum.reduce(global_entries, {[], [], %{env | ctx: ctx_var, where: "schema-level let"}}, fn {key, name, value},
                                                                                                  {bindings, entries, env} ->
         var = Macro.var(key, __MODULE__)
-        expr = compile_source(value, env)
+        expr = XPC.compile_source!(value, env)
         binding = quote do: unquote(var) = unquote(expr)
-        {[binding | bindings], [{key, var} | entries], put_var(env, name, var)}
+        {[binding | bindings], [{key, var} | entries], XPC.put_var(env, name, var)}
       end)
 
     map_ast = {:%{}, [], Enum.reverse(entries)}
 
     quote do
-      defp globals(doc) do
-        unquote(ctx_var) = {:node, doc.root_id}
+      defp globals(unquote(@doc_var)) do
+        unquote(ctx_var) = {:node, unquote(@doc_var).root_id}
         _ = unquote(ctx_var)
         unquote_splicing(Enum.reverse(bindings))
         unquote(map_ast)
@@ -124,7 +127,7 @@ defmodule ExSchematron.Compiler do
 
     env =
       Enum.reduce(pattern_scope.bindings, env, fn {name, key}, env ->
-        put_var(env, name, quote(do: globals.unquote(Macro.var(key, __MODULE__))))
+        XPC.put_var(env, name, quote(do: globals.unquote(Macro.var(key, __MODULE__))))
       end)
 
     rules = Enum.with_index(pattern.rules)
@@ -144,7 +147,7 @@ defmodule ExSchematron.Compiler do
     dispatch_clauses =
       Enum.map(rules, fn {_rule, rule_index} ->
         checks_fun = :"#{pattern_fun}_rule_#{rule_index}"
-        {:->, [], [[rule_index], quote(do: unquote(checks_fun)(doc, globals, {:node, node_id}))]}
+        {:->, [], [[rule_index], quote(do: unquote(checks_fun)(unquote(@doc_var), globals, {:node, node_id}))]}
       end)
 
     fallback = {:->, [], [[nil], []]}
@@ -152,7 +155,7 @@ defmodule ExSchematron.Compiler do
 
     pattern_def =
       quote do
-        defp unquote(pattern_fun)(doc, globals) do
+        defp unquote(pattern_fun)(unquote(@doc_var), globals) do
           rule_sets = [unquote_splicing(set_exprs)]
 
           Enum.flat_map(XP.matched_ids(rule_sets), fn node_id ->
@@ -161,7 +164,7 @@ defmodule ExSchematron.Compiler do
         end
       end
 
-    call = quote do: unquote(pattern_fun)(doc, globals)
+    call = quote do: unquote(pattern_fun)(unquote(@doc_var), globals)
     {[pattern_def | rule_defs], call}
   end
 
@@ -174,16 +177,16 @@ defmodule ExSchematron.Compiler do
     {let_bindings, env} =
       Enum.reduce(rule.lets, {[], env}, fn {name, value}, {bindings, env} ->
         var = let_var(name)
-        binding = quote do: unquote(var) = unquote(compile_source(value, env))
-        {[binding | bindings], put_var(env, name, var)}
+        binding = quote do: unquote(var) = unquote(XPC.compile_source!(value, env))
+        {[binding | bindings], XPC.put_var(env, name, var)}
       end)
 
     check_exprs = Enum.map(rule.checks, &compile_check(&1, env))
     let_vars = Enum.map(rule.lets, fn {name, _value} -> let_var(name) end)
 
     quote do
-      defp unquote(fun_name)(doc, globals, {:node, ctx_id} = unquote(ctx_var)) do
-        _ = {doc, globals, ctx_id, unquote(ctx_var)}
+      defp unquote(fun_name)(unquote(@doc_var), globals, {:node, ctx_id} = unquote(ctx_var)) do
+        _ = {unquote(@doc_var), globals, ctx_id, unquote(ctx_var)}
         unquote_splicing(Enum.reverse(let_bindings))
         _ = {unquote_splicing(let_vars)}
         Enum.reject([unquote_splicing(check_exprs)], &is_nil/1)
@@ -196,7 +199,7 @@ defmodule ExSchematron.Compiler do
               test: nil,
               flag: nil,
               message: Exception.message(error),
-              node: XP.node_path(doc, ctx_id)
+              node: XP.node_path(unquote(@doc_var), ctx_id)
             }
           ]
       end
@@ -205,12 +208,12 @@ defmodule ExSchematron.Compiler do
 
   defp compile_check(%Sch.Check{} = check, env) do
     env = %{env | where: "check #{inspect(check.id)}"}
-    test_expr = compile_source(check.test, env)
+    test_expr = XPC.compile_source!(check.test, env)
 
     message_segments =
       Enum.map(check.message, fn
         {:text, text} -> text
-        {:value_of, select} -> quote do: XP.value_of(doc, unquote(compile_source(select, env)))
+        {:value_of, select} -> quote do: XP.value_of(unquote(@doc_var), unquote(XPC.compile_source!(select, env)))
       end)
 
     violation =
@@ -221,7 +224,7 @@ defmodule ExSchematron.Compiler do
           test: unquote(check.test),
           flag: unquote(check.flag),
           message: XP.message([unquote_splicing(message_segments)]),
-          node: XP.node_path(doc, ctx_id)
+          node: XP.node_path(unquote(@doc_var), ctx_id)
         }
       end
 
@@ -236,15 +239,15 @@ defmodule ExSchematron.Compiler do
   # index whenever the pattern reduces to child/attribute name steps with
   # boolean predicates, top-down as a plain path evaluation otherwise.
   defp compile_context(context_source, env) do
-    ast = parse_source(context_source, env)
-    env = %{env | ctx: quote(do: {:node, doc.root_id})}
+    ast = XPC.parse!(context_source, env)
+    env = %{env | ctx: quote(do: {:node, unquote(@doc_var).root_id})}
     anchored = anchor_context(ast, env)
 
     try do
       compile_context_reverse(anchored, env)
     catch
       :forward_fallback ->
-        quote do: XP.match_set(unquote(compile_expr(anchored, env)))
+        quote do: XP.match_set(unquote(XPC.compile_expr(anchored, env)))
     end
   end
 
@@ -307,7 +310,7 @@ defmodule ExSchematron.Compiler do
         {:{}, [], [kind, Macro.escape(name), compile_reverse_predicates(predicates, env)]}
       end)
 
-    quote do: XP.match_set_reverse(doc, unquote(chain), unquote(absolute?))
+    quote do: XP.match_set_reverse(unquote(@doc_var), unquote(chain), unquote(absolute?))
   end
 
   defp compile_reverse_predicates([], _env), do: nil
@@ -322,10 +325,10 @@ defmodule ExSchematron.Compiler do
 
     compiled =
       try do
-        Enum.map(predicates, fn predicate -> quote do: XP.ebv(unquote(compile_expr(predicate, pred_env))) end)
+        Enum.map(predicates, fn predicate -> quote do: XP.ebv(unquote(XPC.compile_expr(predicate, pred_env))) end)
       rescue
         # position()/last() or another construct only the forward path handles.
-        _error in [Error] -> throw(:forward_fallback)
+        _error in [XPC.Error] -> throw(:forward_fallback)
       end
 
     conjunction = Enum.reduce(compiled, fn pred, acc -> quote do: unquote(acc) and unquote(pred) end)
@@ -339,7 +342,7 @@ defmodule ExSchematron.Compiler do
   end
 
   defp resolve_optional_prefix!(nil, _env), do: nil
-  defp resolve_optional_prefix!(prefix, env), do: resolve_prefix!(prefix, env)
+  defp resolve_optional_prefix!(prefix, env), do: XPC.resolve_prefix!(prefix, env)
 
   defp anchor_context({:union, left, right}, env), do: {:union, anchor_context(left, env), anchor_context(right, env)}
   defp anchor_context({:path, :root, steps}, _env), do: {:path, :root, steps}
@@ -376,21 +379,21 @@ defmodule ExSchematron.Compiler do
     env =
       function.params
       |> Enum.zip(param_vars)
-      |> Enum.reduce(%{env | where: "function #{format_name(function.name)}"}, fn {name, var}, env -> put_var(env, name, var) end)
+      |> Enum.reduce(%{env | where: "function #{format_name(function.name)}"}, fn {name, var}, env -> XPC.put_var(env, name, var) end)
 
     {bindings, env} =
       Enum.reduce(function.bindings, {[], env}, fn {name, value}, {bindings, env} ->
         var = let_var(name)
-        binding = quote do: unquote(var) = unquote(compile_source(value, env))
-        {[binding | bindings], put_var(env, name, var)}
+        binding = quote do: unquote(var) = unquote(XPC.compile_source!(value, env))
+        {[binding | bindings], XPC.put_var(env, name, var)}
       end)
 
-    result = compile_source(function.result, env)
+    result = XPC.compile_source!(function.result, env)
     binding_vars = Enum.map(function.bindings, fn {name, _value} -> let_var(name) end)
 
     quote do
-      defp unquote(function_fun_name(function.name))(doc, unquote_splicing(param_vars)) do
-        _ = {doc, unquote_splicing(param_vars)}
+      defp unquote(function_fun_name(function.name))(unquote(@doc_var), unquote_splicing(param_vars)) do
+        _ = {unquote(@doc_var), unquote_splicing(param_vars)}
         unquote_splicing(Enum.reverse(bindings))
         _ = {unquote_splicing(binding_vars)}
         unquote(result)
@@ -398,110 +401,33 @@ defmodule ExSchematron.Compiler do
     end
   end
 
+  # The XPath compiler's resolve_call hook: binds calls to xsl:function
+  # definitions, emitted as private functions taking `doc` first.
+  defp resolve_function_call(name, compiled_args, env, functions) do
+    case Map.get(functions, name) do
+      nil ->
+        :error
+
+      arity when arity != length(compiled_args) ->
+        raise XPC.Error, message: "#{format_name(name)}() expects #{arity} arguments, got #{length(compiled_args)} in #{env.where}"
+
+      _arity ->
+        {:ok, quote(do: unquote(function_fun_name(name))(unquote(@doc_var), unquote_splicing(compiled_args)))}
+    end
+  end
+
   defp function_fun_name({prefix, local}), do: :"fn_#{sanitize("#{prefix}_#{local}")}"
 
   defp capture_ast(fun_name, arity), do: Code.string_to_quoted!("&#{fun_name}/#{arity}")
 
-  # ------------------------------------------------------------- expressions
-
-  defp parse_source(source, env) do
-    Parser.parse!(source)
-  rescue
-    error ->
-      raise Error, message: "cannot parse #{inspect(source)} in #{env.where}: #{Exception.message(error)}"
-  end
-
-  defp compile_source(source, env), do: source |> parse_source(env) |> compile_expr(env)
-
-  defp compile_expr({:lit, value}, _env) when is_binary(value) or is_integer(value), do: [value]
-  defp compile_expr({:lit, %Decimal{} = decimal}, _env), do: quote(do: [Decimal.new(unquote(Decimal.to_string(decimal)))])
-
-  defp compile_expr({:seq, exprs}, env) do
-    compiled = Enum.map(exprs, &compile_expr(&1, env))
-    quote do: Enum.concat([unquote_splicing(compiled)])
-  end
-
-  defp compile_expr({:or, left, right}, env) do
-    quote do: [XP.ebv(unquote(compile_expr(left, env))) or XP.ebv(unquote(compile_expr(right, env)))]
-  end
-
-  defp compile_expr({:and, left, right}, env) do
-    quote do: [XP.ebv(unquote(compile_expr(left, env))) and XP.ebv(unquote(compile_expr(right, env)))]
-  end
-
-  defp compile_expr({:cmp, :general, op, left, right}, env) do
-    quote do: XP.general_cmp(doc, unquote(op), unquote(compile_expr(left, env)), unquote(compile_expr(right, env)))
-  end
-
-  defp compile_expr({:cmp, :value, op, left, right}, env) do
-    quote do: XP.value_cmp(doc, unquote(op), unquote(compile_expr(left, env)), unquote(compile_expr(right, env)))
-  end
-
-  defp compile_expr({:cmp, :node, op, left, right}, env) do
-    quote do: XP.node_cmp(unquote(op), unquote(compile_expr(left, env)), unquote(compile_expr(right, env)))
-  end
-
-  defp compile_expr({:arith, op, left, right}, env) do
-    quote do: XP.arith(doc, unquote(op), unquote(compile_expr(left, env)), unquote(compile_expr(right, env)))
-  end
-
-  defp compile_expr({:unary_minus, expr}, env) do
-    quote do: XP.unary_minus(doc, unquote(compile_expr(expr, env)))
-  end
-
-  defp compile_expr({:union, left, right}, env) do
-    quote do: XP.union(unquote(compile_expr(left, env)), unquote(compile_expr(right, env)))
-  end
-
-  defp compile_expr({:range, left, right}, env) do
-    quote do: XP.range(unquote(compile_expr(left, env)), unquote(compile_expr(right, env)))
-  end
-
-  defp compile_expr({:concat_op, left, right}, env) do
-    quote do: F.concat(doc, [unquote(compile_expr(left, env)), unquote(compile_expr(right, env))])
-  end
-
-  defp compile_expr({:if, condition, then_expr, else_expr}, env) do
-    quote do
-      if XP.ebv(unquote(compile_expr(condition, env))) do
-        unquote(compile_expr(then_expr, env))
-      else
-        unquote(compile_expr(else_expr, env))
-      end
-    end
-  end
-
-  defp compile_expr({:for, bindings, body}, env), do: compile_for(bindings, body, env)
-
-  defp compile_expr({:quant, kind, bindings, satisfies}, env) do
-    quote do: [unquote(compile_quant(kind, bindings, satisfies, env))]
-  end
-
-  defp compile_expr({:cast, expr, type, allow_empty?}, env) do
-    validate_cast_type!(type, env)
-    quote do: XP.cast(doc, unquote(compile_expr(expr, env)), unquote(type), unquote(allow_empty?))
-  end
-
-  defp compile_expr({:castable, expr, type, allow_empty?}, env) do
-    validate_cast_type!(type, env)
-    quote do: XP.castable?(doc, unquote(compile_expr(expr, env)), unquote(type), unquote(allow_empty?))
-  end
-
-  defp compile_expr({:var, name}, env) do
-    case Map.fetch(env.vars, name) do
-      {:ok, var_ast} -> var_ast
-      :error -> raise Error, message: "unknown variable $#{format_name(name)} in #{env.where}"
-    end
-  end
-
-  defp compile_expr(:context_item, env), do: quote(do: [unquote(ctx!(env))])
+  # ----------------------------------------------------------- code lists
 
   # The corpus uses document() in exactly one shape, a code-list membership test:
   # document('x_codedb.xml')/codedb/cl[@id=N]/enumeration[@value=$v]. The list is
   # frozen into the module as a MapSet at generation time; the emitted expression
   # keeps the EBV the node sequence would have ([] or a non-empty sequence).
   # Any other use of document() falls through to the unsupported-function raise.
-  defp compile_expr(
+  defp codelist_rewrite(
          {:path, {:expr, {:fn, {nil, "document"}, [{:lit, file}]}},
           [
             {:step, :child, {:name, nil, "codedb"}, []},
@@ -510,131 +436,21 @@ defmodule ExSchematron.Compiler do
             {:step, :child, {:name, nil, "enumeration"},
              [{:cmp, :general, :eq, {:path, :relative, [{:step, :attribute, {:name, nil, "value"}, []}]}, checked_expr}]}
           ]},
-         env
+         env,
+         base_dir
        )
        when is_binary(file) and is_integer(cl_id) do
     # The same code list is referenced by many checks; one shared private
     # function per list keeps the module AST small.
-    fun_name = register_codelist!(file, cl_id, env)
-    quote do: XP.codelist_member?(doc, unquote(fun_name)(), unquote(compile_expr(checked_expr, env)))
+    fun_name = register_codelist!(file, cl_id, env, base_dir)
+    {:ok, quote(do: XP.codelist_member?(unquote(@doc_var), unquote(fun_name)(), unquote(XPC.compile_expr(checked_expr, env))))}
   end
 
-  defp compile_expr({:path, origin, steps}, env) do
-    initial =
-      case origin do
-        :root -> quote do: XP.root(doc)
-        :relative -> quote do: [unquote(ctx!(env))]
-        {:expr, expr} -> compile_expr(expr, env)
-      end
-
-    Enum.reduce(steps, initial, fn step, acc -> compile_step(step, acc, env) end)
-  end
-
-  defp compile_expr({:filter, primary, predicates}, env) do
-    quote do: XP.filter(doc, unquote(compile_expr(primary, env)), unquote(compile_predicates(predicates, env)))
-  end
-
-  defp compile_expr({:fn, name, args}, env), do: compile_call(name, args, env)
-
-  defp compile_expr(other, env) do
-    raise Error, message: "unsupported XPath construct #{inspect(other)} in #{env.where}"
-  end
-
-  defp compile_step({:step, axis, node_test, predicates}, acc, env) do
-    test = compile_node_test(node_test, env)
-    quote do: XP.step(doc, unquote(acc), unquote(axis), unquote(Macro.escape(test)), unquote(compile_predicates(predicates, env)))
-  end
-
-  # Any other expression as a path segment: evaluated once per context node.
-  defp compile_step(expr, acc, env) do
-    item_var = Macro.var(:step_item, __MODULE__)
-    inner = compile_expr(expr, %{env | ctx: item_var})
-
-    quote do
-      XP.expr_step(doc, unquote(acc), fn unquote(item_var) ->
-        _ = unquote(item_var)
-        unquote(inner)
-      end)
-    end
-  end
-
-  defp compile_predicates([], _env), do: []
-
-  defp compile_predicates(predicates, env) do
-    Enum.map(predicates, fn predicate ->
-      item_var = Macro.var(:pred_item, __MODULE__)
-      position_var = Macro.var(:pred_position, __MODULE__)
-      size_var = Macro.var(:pred_size, __MODULE__)
-
-      inner = compile_expr(predicate, %{env | ctx: item_var, position: position_var, size: size_var})
-
-      quote do
-        fn unquote(item_var), unquote(position_var), unquote(size_var) ->
-          _ = {unquote(item_var), unquote(position_var), unquote(size_var)}
-          unquote(inner)
-        end
-      end
-    end)
-  end
-
-  defp compile_node_test(node_test, env) do
-    case node_test do
-      {:name, nil, local} -> {:name, nil, local}
-      {:name, prefix, local} -> {:name, resolve_prefix!(prefix, env), local}
-      :any_name -> {:name, :any, :any}
-      {:prefix_wildcard, prefix} -> {:name, resolve_prefix!(prefix, env), :any}
-      {:local_wildcard, local} -> {:name, :any, local}
-      {:kind, kind} -> kind
-    end
-  end
-
-  defp resolve_prefix!(prefix, env) do
-    case Map.fetch(env.ns, prefix) do
-      {:ok, uri} -> uri
-      :error -> raise Error, message: "undeclared namespace prefix #{inspect(prefix)} in #{env.where}"
-    end
-  end
-
-  defp compile_for([], body, env), do: compile_expr(body, env)
-
-  defp compile_for([{name, source_expr} | rest], body, env) do
-    item_var = Macro.var(:"for_#{sanitize(format_name(name))}", __MODULE__)
-    inner_env = put_var(env, name, quote(do: [unquote(item_var)]))
-
-    quote do
-      Enum.flat_map(unquote(compile_expr(source_expr, env)), fn unquote(item_var) ->
-        unquote(compile_for(rest, body, inner_env))
-      end)
-    end
-  end
-
-  defp compile_quant(_kind, [], satisfies, env), do: quote(do: XP.ebv(unquote(compile_expr(satisfies, env))))
-
-  defp compile_quant(kind, [{name, source_expr} | rest], satisfies, env) do
-    item_var = Macro.var(:"quant_#{sanitize(format_name(name))}", __MODULE__)
-    inner_env = put_var(env, name, quote(do: [unquote(item_var)]))
-    enum_fun = if kind == :some, do: :any?, else: :all?
-
-    quote do
-      Enum.unquote(enum_fun)(unquote(compile_expr(source_expr, env)), fn unquote(item_var) ->
-        unquote(compile_quant(kind, rest, satisfies, inner_env))
-      end)
-    end
-  end
-
-  @cast_targets ~w(decimal integer double string boolean date)
-
-  defp validate_cast_type!({prefix, local}, env) do
-    unless prefix == "xs" and local in @cast_targets do
-      raise Error, message: "unsupported cast target #{format_name({prefix, local})} in #{env.where}"
-    end
-  end
-
-  # ----------------------------------------------------------- code lists
+  defp codelist_rewrite(_ast, _env, _base_dir), do: :pass
 
   # Compilation-scoped registry of the code lists referenced so far, so each is
   # emitted once as a private function definition.
-  defp register_codelist!(file, cl_id, env) do
+  defp register_codelist!(file, cl_id, env, base_dir) do
     key = {__MODULE__, :codelist_registry}
     registry = Process.get(key, %{})
 
@@ -643,7 +459,7 @@ defmodule ExSchematron.Compiler do
         fun_name
 
       :error ->
-        values = codelist_values!(file, cl_id, env)
+        values = codelist_values!(file, cl_id, env, base_dir)
         fun_name = :"codelist_#{map_size(registry)}"
         Process.put(key, Map.put(registry, {file, cl_id}, {fun_name, values}))
         fun_name
@@ -662,12 +478,12 @@ defmodule ExSchematron.Compiler do
     end
   end
 
-  defp codelist_values!(file, cl_id, env) do
-    unless env.base_dir do
+  defp codelist_values!(file, cl_id, env, base_dir) do
+    unless base_dir do
       raise Error, message: "document(#{inspect(file)}) needs the schematron's directory; compile from a file path, in #{env.where}"
     end
 
-    path = Path.join(env.base_dir, file)
+    path = Path.join(base_dir, file)
     codedb = codedb_document!(path, env)
 
     id_string = Integer.to_string(cl_id)
@@ -711,104 +527,7 @@ defmodule ExSchematron.Compiler do
     end
   end
 
-  # ---------------------------------------------------------- function calls
-
-  @zero_arg_context ~w(string normalize-space string-length number name local-name)
-
-  defp compile_call({prefix, local}, args, env) when prefix in [nil, "fn"] do
-    args = if local in @zero_arg_context and args == [], do: [:context_item], else: args
-    compiled = Enum.map(args, &compile_expr(&1, env))
-    builtin!(local, compiled, env)
-  end
-
-  defp compile_call({"xs", local}, [arg], env) when local in @cast_targets do
-    # Constructor functions behave like `cast as xs:type?`.
-    quote do: XP.cast(doc, unquote(compile_expr(arg, env)), {"xs", unquote(local)}, true)
-  end
-
-  defp compile_call(name, args, env) do
-    arity = Map.get(env.functions, name)
-
-    cond do
-      arity == nil ->
-        raise Error, message: "unknown function #{format_name(name)}() in #{env.where}"
-
-      arity != length(args) ->
-        raise Error, message: "#{format_name(name)}() expects #{arity} arguments, got #{length(args)} in #{env.where}"
-
-      true ->
-        compiled = Enum.map(args, &compile_expr(&1, env))
-        quote do: unquote(function_fun_name(name))(doc, unquote_splicing(compiled))
-    end
-  end
-
-  @simple_builtins %{
-    {"not", 1} => :not_,
-    {"boolean", 1} => :boolean_,
-    {"exists", 1} => :exists,
-    {"empty", 1} => :empty,
-    {"count", 1} => :count,
-    {"distinct-values", 1} => :distinct_values,
-    {"string", 1} => :string_,
-    {"normalize-space", 1} => :normalize_space,
-    {"string-length", 1} => :string_length,
-    {"upper-case", 1} => :upper_case,
-    {"lower-case", 1} => :lower_case,
-    {"contains", 2} => :contains,
-    {"starts-with", 2} => :starts_with,
-    {"ends-with", 2} => :ends_with,
-    {"substring", 2} => :substring,
-    {"substring", 3} => :substring,
-    {"substring-before", 2} => :substring_before,
-    {"substring-after", 2} => :substring_after,
-    {"translate", 3} => :translate,
-    {"matches", 2} => :matches,
-    {"matches", 3} => :matches,
-    {"tokenize", 2} => :tokenize,
-    {"tokenize", 3} => :tokenize,
-    {"replace", 3} => :replace,
-    {"replace", 4} => :replace,
-    {"string-join", 2} => :string_join,
-    {"number", 1} => :number,
-    {"sum", 1} => :sum,
-    {"round", 1} => :round_,
-    {"abs", 1} => :abs_,
-    {"floor", 1} => :floor,
-    {"ceiling", 1} => :ceiling,
-    {"name", 1} => :name_,
-    {"local-name", 1} => :local_name
-  }
-
-  defp builtin!("true", [], _env), do: [true]
-  defp builtin!("false", [], _env), do: [false]
-
-  defp builtin!("concat", args, _env) when length(args) >= 2 do
-    quote do: F.concat(doc, [unquote_splicing(args)])
-  end
-
-  defp builtin!("position", [], env) do
-    env.position || raise Error, message: "position() outside a predicate in #{env.where}"
-    quote do: [unquote(env.position)]
-  end
-
-  defp builtin!("last", [], env) do
-    env.size || raise Error, message: "last() outside a predicate in #{env.where}"
-    quote do: [unquote(env.size)]
-  end
-
-  defp builtin!(local, args, env) do
-    case Map.fetch(@simple_builtins, {local, length(args)}) do
-      {:ok, fun} -> quote do: F.unquote(fun)(doc, unquote_splicing(args))
-      :error -> raise Error, message: "unsupported function #{local}/#{length(args)} in #{env.where}"
-    end
-  end
-
   # ---------------------------------------------------------------- helpers
-
-  defp ctx!(%Env{ctx: nil, where: where}), do: raise(Error, message: "context item used where none is defined, in #{where}")
-  defp ctx!(%Env{ctx: ctx}), do: ctx
-
-  defp put_var(env, name, ast), do: %{env | vars: Map.put(env.vars, name, ast)}
 
   defp let_var(name), do: Macro.var(Scopes.var_key(name), __MODULE__)
 
