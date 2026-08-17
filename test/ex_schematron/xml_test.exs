@@ -96,6 +96,18 @@ defmodule ExSchematron.XmlTest do
     assert text_node.value == "x & y"
   end
 
+  test "malformed XML raises a ParseError" do
+    error = assert_raise Xml.ParseError, fn -> Xml.parse!("<a><b></a>") end
+    assert error.message =~ "a"
+
+    assert_raise Xml.ParseError, fn -> Xml.parse!("not xml at all") end
+  end
+
+  test "an undeclared namespace prefix raises a ParseError" do
+    error = assert_raise Xml.ParseError, fn -> Xml.parse!("<root><foo:x/></root>") end
+    assert error.message =~ ~s(undeclared namespace prefix "foo")
+  end
+
   defp collect_elements(doc, node) do
     children = for child <- Xml.children(doc, node.id), child.kind == :element, do: child
     [node | Enum.flat_map(children, fn child -> collect_elements(doc, child) end)]

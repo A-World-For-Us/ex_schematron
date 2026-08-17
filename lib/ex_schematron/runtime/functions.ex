@@ -44,7 +44,8 @@ defmodule ExSchematron.Runtime.Functions do
     [normalized]
   end
 
-  def string_length(doc, seq), do: [doc |> one_string!(seq) |> String.length()]
+  # XPath string lengths and positions count codepoints, not grapheme clusters.
+  def string_length(doc, seq), do: [length(String.to_charlist(one_string!(doc, seq)))]
 
   def upper_case(doc, seq), do: [doc |> one_string!(seq) |> String.upcase()]
   def lower_case(doc, seq), do: [doc |> one_string!(seq) |> String.downcase()]
@@ -78,18 +79,26 @@ defmodule ExSchematron.Runtime.Functions do
     [do_substring(string, start_pos, length_val)]
   end
 
-  # Characters at 1-based positions p with p >= start and (if bounded) p < start + len.
+  # Characters (codepoints) at 1-based positions p with p >= start and (if
+  # bounded) p < start + len. Infinite bounds get explicit clauses: Erlang term
+  # order puts every integer below any atom, so `position >= :neg_infinity`
+  # would be false, not true. `:infinity` as len is the 2-arg unbounded
+  # sentinel; with a -INF start every position satisfies p >= start.
   defp do_substring(_string, :nan, _len), do: ""
   defp do_substring(_string, _start, :nan), do: ""
+  defp do_substring(string, :neg_infinity, :infinity), do: string
+  defp do_substring(_string, :neg_infinity, _len), do: ""
+  defp do_substring(_string, :infinity, _len), do: ""
 
   defp do_substring(string, start, len) do
     string
-    |> String.graphemes()
+    |> String.to_charlist()
     |> Enum.with_index(1)
-    |> Enum.filter(fn {_grapheme, position} ->
+    |> Enum.filter(fn {_codepoint, position} ->
       position >= start and (len == :infinity or position < start + len)
     end)
-    |> Enum.map_join(&elem(&1, 0))
+    |> Enum.map(&elem(&1, 0))
+    |> List.to_string()
   end
 
   def substring_before(doc, input, marker) do
@@ -116,7 +125,9 @@ defmodule ExSchematron.Runtime.Functions do
     string = one_string!(doc, input)
     from_chars = doc |> one_string!(from) |> String.graphemes()
     to_chars = doc |> one_string!(to) |> String.graphemes()
-    mapping = from_chars |> Enum.zip(Stream.concat(to_chars, Stream.repeatedly(fn -> nil end))) |> Map.new()
+    # Reversed before Map.new so that for a character repeated in `from` the
+    # first occurrence's replacement wins, as fn:translate specifies.
+    mapping = from_chars |> Enum.zip(Stream.concat(to_chars, Stream.repeatedly(fn -> nil end))) |> Enum.reverse() |> Map.new()
 
     translated =
       string
@@ -182,7 +193,10 @@ defmodule ExSchematron.Runtime.Functions do
       raise Error, message: "XSD \\i and \\c character classes are not supported: #{inspect(pattern)}"
     end
 
-    Regex.compile!(pattern, "u" <> flags)
+    case Regex.compile(pattern, "u" <> flags) do
+      {:ok, regex} -> regex
+      {:error, {reason, at}} -> raise Error, message: "invalid regular expression #{inspect(pattern)}: #{reason} (at #{at})"
+    end
   end
 
   # ------------------------------------------------------------- number

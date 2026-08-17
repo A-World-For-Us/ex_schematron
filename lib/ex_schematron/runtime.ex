@@ -137,8 +137,9 @@ defmodule ExSchematron.Runtime do
 
   defp pair_cmp(op, left, right) do
     case compare(left, right) do
+      # A NaN operand: eq/lt/le/gt/ge are false, and ne is their negation, true.
       :incomparable ->
-        false
+        op == :ne
 
       relation ->
         case op do
@@ -269,10 +270,14 @@ defmodule ExSchematron.Runtime do
       :- -> left_float - right_float
       :* -> left_float * right_float
       :div -> if right_float == 0.0, do: zero_div(left_float), else: left_float / right_float
-      :idiv -> trunc(left_float / right_float)
-      :mod -> :math.fmod(left_float, right_float)
+      :idiv -> if right_float == 0.0, do: division_by_zero!(), else: trunc(left_float / right_float)
+      :mod -> if right_float == 0.0, do: division_by_zero!(), else: :math.fmod(left_float, right_float)
     end
   end
+
+  # Only xs:double division by zero yields INF/NaN; integer and decimal
+  # divisions by zero are the FOAR0001 dynamic error.
+  defp arith_items(op, left, 0) when op in [:div, :idiv, :mod] and is_integer(left), do: division_by_zero!()
 
   defp arith_items(op, left, right) when is_integer(left) and is_integer(right) do
     case op do
@@ -289,6 +294,8 @@ defmodule ExSchematron.Runtime do
     left_decimal = to_decimal(left)
     right_decimal = to_decimal(right)
 
+    if op in [:div, :idiv, :mod] and Decimal.equal?(right_decimal, 0), do: division_by_zero!()
+
     case op do
       :+ -> Decimal.add(left_decimal, right_decimal)
       :- -> Decimal.sub(left_decimal, right_decimal)
@@ -301,6 +308,8 @@ defmodule ExSchematron.Runtime do
 
   # XPath mod takes the sign of the dividend, like Erlang rem (not Integer.mod).
   defp integer_mod(left, right), do: rem(left, right)
+
+  defp division_by_zero!, do: raise(Error, message: "division by zero (FOAR0001)")
 
   defp negate_infinity(:infinity), do: :neg_infinity
   defp negate_infinity(:neg_infinity), do: :infinity

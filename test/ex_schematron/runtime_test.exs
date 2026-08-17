@@ -50,6 +50,17 @@ defmodule ExSchematron.RuntimeTest do
       # String comparison, not numeric: "380" != "380.0"
       assert Runtime.general_cmp(doc, :eq, types, ["380.0"]) == [false]
     end
+
+    test "NaN is ne to everything and eq/ordered to nothing", %{doc: doc} do
+      assert Runtime.general_cmp(doc, :ne, [:nan], [1]) == [true]
+      assert Runtime.value_cmp(doc, :ne, [:nan], [1]) == [true]
+      assert Runtime.general_cmp(doc, :ne, [:nan], [:nan]) == [true]
+
+      for op <- [:eq, :lt, :le, :gt, :ge] do
+        assert Runtime.general_cmp(doc, op, [:nan], [1]) == [false]
+        assert Runtime.value_cmp(doc, op, [:nan], [1]) == [false]
+      end
+    end
   end
 
   describe "empty sequence propagation" do
@@ -186,6 +197,42 @@ defmodule ExSchematron.RuntimeTest do
     test "substring", %{doc: doc} do
       assert Functions.substring(doc, ["20260101120000"], [1], [8]) == ["20260101"]
       assert Functions.substring(doc, ["motor"], [2]) == ["otor"]
+    end
+
+    test "substring with infinite bounds", %{doc: doc} do
+      assert Functions.substring(doc, ["abc"], [:neg_infinity]) == ["abc"]
+      assert Functions.substring(doc, ["abc"], [:neg_infinity], [5]) == [""]
+      assert Functions.substring(doc, ["abc"], [:infinity]) == [""]
+      assert Functions.substring(doc, ["abc"], [2], [:infinity]) == ["bc"]
+    end
+
+    test "translate maps a repeated from-character to its first replacement", %{doc: doc} do
+      assert Functions.translate(doc, ["abc"], ["aa"], ["xy"]) == ["xbc"]
+      assert Functions.translate(doc, ["abcd"], ["abc"], ["x"]) == ["xd"]
+    end
+
+    test "string-length counts codepoints, not graphemes", %{doc: doc} do
+      # "e" followed by a combining acute accent: two codepoints, one grapheme.
+      assert Functions.string_length(doc, ["e\u0301"]) == [2]
+      assert Functions.substring(doc, ["e\u0301x"], [2], [1]) == ["\u0301"]
+    end
+
+    test "division by zero raises for integers and decimals, not doubles", %{doc: doc} do
+      for op <- [:div, :idiv, :mod] do
+        assert_raise Runtime.Error, ~r/division by zero/, fn -> Runtime.arith(doc, op, [1], [0]) end
+        assert_raise Runtime.Error, ~r/division by zero/, fn -> Runtime.arith(doc, op, [Decimal.new(1)], [Decimal.new(0)]) end
+      end
+
+      assert Runtime.arith(doc, :div, [1.0], [0.0]) == [:infinity]
+      assert Runtime.arith(doc, :div, [-1.0], [0.0]) == [:neg_infinity]
+      assert_raise Runtime.Error, ~r/division by zero/, fn -> Runtime.arith(doc, :idiv, [1.0], [0.0]) end
+      assert_raise Runtime.Error, ~r/division by zero/, fn -> Runtime.arith(doc, :mod, [1.0], [0.0]) end
+    end
+
+    test "an invalid regular expression raises Runtime.Error", %{doc: doc} do
+      assert_raise Runtime.Error, ~r/invalid regular expression/, fn ->
+        Functions.matches(doc, ["a"], ["\\p{IsBasicLatin}+"])
+      end
     end
 
     test "string of decimal is canonical", %{doc: doc} do

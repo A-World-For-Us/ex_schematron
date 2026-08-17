@@ -155,6 +155,30 @@ defmodule ExSchematron.CompilerTest do
     assert [%{rule: "USE-LEN-1"}] = UseValidator.validate(invalid)
   end
 
+  test "a runtime error in a rule becomes an :error violation, not a crash" do
+    sch = """
+    <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+      <ns prefix="inv" uri="urn:invoice"/>
+      <pattern id="P">
+        <rule context="inv:Invoice">
+          <assert test="count(inv:Line) div count(inv:Missing) = 1" id="DIV-1">x</assert>
+        </rule>
+        <rule context="inv:ID">
+          <assert test="matches(., '\\p{IsBasicLatin}+')" id="RX-1">x</assert>
+        </rule>
+      </pattern>
+    </schema>
+    """
+
+    module = ExSchematron.compile!(sch, CompilerTestRuntimeErrors)
+    violations = module.validate(@valid)
+    by_message = Map.new(violations, fn violation -> {violation.message, violation.type} end)
+
+    assert map_size(by_message) == 2
+    assert Enum.any?(by_message, fn {message, type} -> type == :error and message =~ "division by zero" end)
+    assert Enum.any?(by_message, fn {message, type} -> type == :error and message =~ "invalid regular expression" end)
+  end
+
   test "unknown function raises at generation with the location" do
     sch = """
     <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">

@@ -8,6 +8,10 @@ defmodule ExSchematron.Xml do
   owner element.
   """
 
+  defmodule ParseError do
+    defexception [:message]
+  end
+
   defmodule Document do
     @moduledoc "name_index maps `{:element | :attribute, name}` to node ids in document order."
     defstruct nodes: %{}, root_id: nil, name_index: %{}
@@ -108,7 +112,11 @@ defmodule ExSchematron.Xml do
       case String.split(qname, ":", parts: 2) do
         [local] when kind == :element -> {Map.get(bindings, :default), local}
         [local] -> {nil, local}
-        [prefix, local] -> {Map.fetch!(bindings, prefix), local}
+        [prefix, local] ->
+          case Map.fetch(bindings, prefix) do
+            {:ok, uri} -> {uri, local}
+            :error -> raise ExSchematron.Xml.ParseError, message: "undeclared namespace prefix #{inspect(prefix)} in #{inspect(qname)}"
+          end
       end
     end
 
@@ -118,10 +126,14 @@ defmodule ExSchematron.Xml do
     defp merge_text([]), do: []
   end
 
+  @doc "Parses an XML binary into a document. Raises `#{inspect(__MODULE__)}.ParseError` on malformed input."
   @spec parse!(binary()) :: Document.t()
   def parse!(xml) when is_binary(xml) do
-    {:ok, %{root: root}} = xml |> strip_bom() |> Saxy.parse_string(Builder, %{stack: [], root: nil})
-    index(root)
+    case xml |> strip_bom() |> Saxy.parse_string(Builder, %{stack: [], root: nil}) do
+      {:ok, %{root: root}} when root != nil -> index(root)
+      {:ok, _no_root} -> raise ParseError, message: "document has no root element"
+      {:error, error} -> raise ParseError, message: Exception.message(error)
+    end
   end
 
   defp strip_bom(<<0xEF, 0xBB, 0xBF, rest::binary>>), do: rest
