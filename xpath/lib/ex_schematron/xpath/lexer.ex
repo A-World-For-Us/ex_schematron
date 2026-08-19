@@ -211,15 +211,15 @@ defmodule ExSchematron.XPath.Lexer do
 
   defp do_split_while(binary, fun, index) do
     case binary do
-      <<prefix::binary-size(index), char::utf8, _::binary>> ->
+      <<prefix::binary-size(^index), char::utf8, _::binary>> ->
         if fun.(char) do
           do_split_while(binary, fun, index + byte_size(<<char::utf8>>))
         else
-          <<^prefix::binary-size(index), rest::binary>> = binary
+          <<^prefix::binary-size(^index), rest::binary>> = binary
           {prefix, rest}
         end
 
-      <<prefix::binary-size(index)>> ->
+      <<prefix::binary-size(^index)>> ->
         {prefix, <<>>}
     end
   end
