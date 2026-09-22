@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-    Schematron Licensed under European Union Public Licence (EUPL) version 1.3.1
+    Schematron Licensed under European Union Public Licence (EUPL) version 1.4.0
     Réalisé par Quentin Houard et Cyrille Sautereau pour le compte du FNFE-MPE.
 -->
-<!-- Schematron 20260216_BR-FR-CDV-Schematron-CDAR_V1.3.1 - last update 2026 04 30 NO CHANGE -->
+<!-- Schematron BR-FR-CDV-Schematron-CDAR_V1.4.0.04 - last fix04 2026 09 04 
+    Mode "WARNING" APPLICABLE UNIQUEMENT EN RECEPTION DES LA PUBLICATION ET JUSQU'AU 30 SEPTEMBRE 2026 AU PLUS TARD. -->
+                   
 
 <schema xmlns="http://purl.oclc.org/dsdl/schematron"
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
@@ -39,9 +41,9 @@
     <xsl:variable name="isFormatValid" select="matches($date, '^20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$')"/>
     
     <!-- Extraction des composantes -->
-    <xsl:variable name="year" select="number(substring($date, 1, 4))"/>
-    <xsl:variable name="month" select="number(substring($date, 5, 2))"/>
-    <xsl:variable name="day" select="number(substring($date, 7, 2))"/>
+    <xsl:variable name="year" select="xs:decimal(substring($date, 1, 4))"/>
+    <xsl:variable name="month" select="xs:decimal(substring($date, 5, 2))"/>
+    <xsl:variable name="day" select="xs:decimal(substring($date, 7, 2))"/>
     
     <!-- Calcul année bissextile -->
     <xsl:variable name="isLeapYear"
@@ -67,11 +69,11 @@
     <xsl:sequence select="$code = tokenize($custom:document-type-codes, '\s+')"/>
   </xsl:function>
   
-  <!-- BR-FR-08 : Type de facture -->
+  <!-- BR-FR-08 : Type de facture V1.1.0 Ajout Cadre 8 et 9 -->
   <xsl:function name="custom:is-valid-billing-mode" as="xs:boolean">
     <xsl:param name="code" as="xs:string"/>
     <xsl:variable name="custom:billing-modes" as="xs:string"
-      select="'B1 S1 M1 B2 S2 M2 B4 S4 M4 S5 S6 B7 S7'"/>
+      select="'B1 S1 M1 B2 S2 S3 M2 B4 S4 M4 S5 S6 B7 S7 B8 S8 M8 B9 S9 M9'"/>
     <xsl:sequence select="$code = tokenize($custom:billing-modes, '\s+')"/>
   </xsl:function>
   
@@ -96,7 +98,8 @@
       0130 0135 0142 0147 0151 0154 0158 0170 0177 0183 0184 0188 0190 
       0191 0192 0193 0194 0195 0196 0198 0199 0200 0201 0202 0203 0204 
       0205 0208 0209 0210 0211 0212 0213 0215 0216 0217 0218 0221 0225 
-      0230 0235 0240 9910 9913 9914 9915 9918 9919 9920 9922 9923 9924 
+      0230 0235 0240 0242 0244 0245 0246 0248 
+      9910 9913 9914 9915 9918 9919 9920 9922 9923 9924 
       9925 9926 9927 9928 9929 9930 9931 9932 9933 9934 9935 9936 9937 
       9938 9939 9940 9941 9942 9943 9944 9945 9946 9947 9948 9949 9950 
       9951 9952 9953 9957 9959'"/>
@@ -178,7 +181,7 @@
   <xsl:function name="custom:is-valid-status-reason-code" as="xs:boolean">
     <xsl:param name="code" as="xs:string"/>
     <xsl:variable name="custom:status-reason-codes" as="xs:string"
-      select="'NON_TRANSMISE JUSTIF_ABS ROUTAGE_ERR AUTRE COORD_BANC_ERR TX_TVA_ERR MONTANTTOTAL_ERR CALCUL_ERR NON_CONFORME DOUBLON DEST_INC DEST_ERR TRANSAC_INC EMMET_INC CONTRAT_TERM DOUBLE_FACT CMD_ERR ADR_ERR SIRET_ERR CODE_ROUTAGE_ERR REF_CT_ABSENT REF_ERR PU_ERR REM_ERR QTE_ERR ART_ERR MODPAI_ERR QUALITE_ERR LIVR_INCOMP REJ_SEMAN REJ_UNI REJ_COH REJ_ADR REJ_CONT_B2G REJ_REF_PJ REJ_ASS_PJ IRR_VIDE_F IRR_TYPE_F IRR_SYNTAX IRR_TAILLE_PJ IRR_NOM_PJ IRR_VID_PJ IRR_EXT_DOC IRR_TAILLE_F IRR_ANTIVIRUS'"/>
+      select="'RETRAIT_MAN_SERV ST_CT_NON_DECLAR SUPPR_COMP_AVOIR TRANSF_PMNT_REGIE CONTACT_ACHTR NON_TRANSMISE JUSTIF_ABS ROUTAGE_ERR AUTRE COORD_BANC_ERR TX_TVA_ERR MONTANTTOTAL_ERR CALCUL_ERR NON_CONFORME DOUBLON DEST_INC DEST_ERR TRANSAC_INC EMMET_INC CONTRAT_TERM DOUBLE_FACT CMD_ERR ADR_ERR SIRET_ERR CODE_ROUTAGE_ERR REF_CT_ABSENT REF_ERR PU_ERR REM_ERR QTE_ERR ART_ERR MODPAI_ERR QUALITE_ERR LIVR_INCOMP REJ_SEMAN REJ_UNI REJ_COH REJ_ADR REJ_CONT_B2G REJ_REF_PJ REJ_ASS_PJ IRR_VIDE_F IRR_TYPE_F IRR_SYNTAX IRR_TAILLE_PJ IRR_NOM_PJ IRR_VID_PJ IRR_EXT_DOC IRR_TAILLE_F IRR_ANTIVIRUS IRR_NOM_F'"/>
     <xsl:sequence select="$code = tokenize($custom:status-reason-codes, '\s+')"/>
   </xsl:function>
   
@@ -219,17 +222,17 @@
     
   </pattern>
   
-  <pattern id="BR-FR-CDV-02"> <!-- CYS3 urn.cpro.gouv.fr:1p0:CDV:invoice maintenu pour les échanges entre PA -->
+  <pattern id="BR-FR-CDV-02"> <!-- CYS3 urn.cpro.gouv.fr:1p0:CDV:invoice maintenu pour les échanges entre PA V1.4.0 : le matricule du PPF est 0000 -->
     <title>BR-FR-CDV-02 — Vérification de la valeur de MDT-3</title>
     
     <rule context="rsm:CrossDomainAcknowledgementAndResponse/rsm:ExchangedDocumentContext">
       <assert test="./ram:GuidelineSpecifiedDocumentContextParameter/ram:ID = 'urn.cpro.gouv.fr:1p0:CDV:invoice' 
-        or (./ram:GuidelineSpecifiedDocumentContextParameter/ram:ID = 'urn.cpro.gouv.fr:1p0:CDV:einvoicingF2' and count(../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID) = 1 and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID[@schemeID='0238'] = '9998' and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:RoleCode = 'DFH')"
+        or (./ram:GuidelineSpecifiedDocumentContextParameter/ram:ID = 'urn.cpro.gouv.fr:1p0:CDV:einvoicingF2' and count(../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID) = 1 and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID[@schemeID='0238'] = '0000' and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:RoleCode = 'DFH')"
         flag="warning"
         id="BR-FR-CDV-02_MDT-3">
         [BR-FR-CDV-02/MDT-3] : La valeur de MDT-3 doit être :
         - "urn.cpro.gouv.fr:1p0:CDV:invoice", ou
-        - "urn.cpro.gouv.fr:1p0:CDV:einvoicingF2" **uniquement si** il y a un unique Destinataire (Recipent) et que c'est le PPF : GlobalID = 9998 avec @shemeId = 0238 et CodeRole = DFH. 
+        - "urn.cpro.gouv.fr:1p0:CDV:einvoicingF2" **uniquement si** il y a un unique Destinataire (Recipent) et que c'est le PPF : GlobalID = 0000 avec @shemeId = 0238 et CodeRole = DFH. 
         Valeurs actuelles : "<value-of select='./ram:GuidelineSpecifiedDocumentContextParameter/ram:ID'/>". Nombre de Recipient : "<value-of select='count(../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID)'/>" - GlobalID : "<value-of select='../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID'/>" - @shemeID : "<value-of select='../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID/@schemeID'/>" - CodeRole : "<value-of select='../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:RoleCode'/>"
         Veuillez corriger cette valeur pour respecter les spécifications du format CDV.
       </assert>
@@ -359,11 +362,11 @@
     
   </pattern>
   
-  <pattern id="BR-FR-CDV-11"> <!-- VCYS ajout de exists() -->
+  <pattern id="BR-FR-CDV-11"> <!-- VCYS ajout de exists() + correction XPath MDT-501 V1.4-->
     <title>BR-FR-CDV-11 — Présence obligatoire de MDG-35</title>
     
     <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument">
-      <assert test="exists(ram:FormattedIssueDateTime) or rsm:CrossDomainAcknowledgementAndResponse/rsm:ExchangedDocumentContext/ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID = '501'" 
+      <assert test="exists(ram:FormattedIssueDateTime) or /rsm:CrossDomainAcknowledgementAndResponse/rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument/ram:ProcessConditionCode = '501'" 
         flag="warning" 
         id="BR-FR-CDV-11_MDG-35">
         [BR-FR-CDV-11/MDG-35] : La date d’émission formatée de la facture référencée (MDG-35) est obligatoire,
@@ -386,30 +389,37 @@
     
   </pattern>
   
-  <pattern id="BR-FR-CDV-13"> <!-- VCYS ajout de exists() -->
+  <pattern id="BR-FR-CDV-13"> <!-- V1.4.0 : correction Xpath pour MDT-105 - fix04 : ajout d'une règle WARNING pour vérifier qu'il existe un GlobalID de type SIREN (schemeID = 0002) -->
     <title>BR-FR-CDV-13 — Présence obligatoire de MDT-129</title>
     
     <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument/ram:IssuerTradeParty">
-      <assert test="exists(ram:GlobalID) or /rsm:CrossDomainAcknowledgementAndResponse/rsm:ExchangedDocumentContext/ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID = '501'" 
+      <assert test="(ram:GlobalID!='') or ../ram:ProcessConditionCode = '501'" 
         flag="warning" 
         id="BR-FR-CDV-13_MDT-129">
-        [BR-FR-CDV-13/MDT-129] : L'identifiant du partenaire commercial émetteur (MDT-129) est obligatoire,
-        sauf si MDT-105 (ram:ID dans BusinessProcessSpecifiedDocumentContextParameter) est égal à "501".
+        [BR-FR-CDV-13/MDT-129] : L'identifiant du vendeur émetteur de la facture (en direct ou pour son compte) (MDT-129) est obligatoire,
+        sauf si MDT-105 est égal à "501".
+        En cas de présence, une valeur au moins doit correspondre à l'Identifiant légal du VENDEUR tel que présent dans la facture en BT-30.
+      </assert>
+      
+      <assert test="ram:GlobalID[@schemeID='0002']!='' or ../ram:ProcessConditionCode = '501'" 
+        flag="warning" 
+        id="BR-FR-CDV-13_MDT-129-2">
+        [BR-FR-CDV-13/MDT-129-2] : WARNING - MDT-105 est différent de "501" et il n'y a pas de MDT-129 (ID legal du Vendeur) avec un schemeID = 0002 pour un SIREN. C'est une erreur sauf si le Vendeur n'est pas assujetti à la TVA.
       </assert>
     </rule>
+ 
   </pattern>
   
-  <pattern id="BR-FR-CDV-14">
+  <pattern id="BR-FR-CDV-14"> <!-- V1.4.0 Complément de la règle (présence taux de TVA) -->
     <title>BR-FR-CDV-14 — Vérification des caractéristiques en cas de statut "Encaissé"</title>
     
     <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument">
       <assert test="not(ram:ProcessConditionCode = '212') or 
-        ram:SpecifiedDocumentStatus/ram:SpecifiedDocumentCharacteristic[ram:TypeCode = 'MEN' and ram:ValueAmount]"
+        ((count(ram:SpecifiedDocumentStatus/ram:SpecifiedDocumentCharacteristic[ram:TypeCode = 'MEN']) ge 1 )
+        and (count(ram:SpecifiedDocumentStatus/ram:SpecifiedDocumentCharacteristic[ram:TypeCode = 'MEN']) = count(ram:SpecifiedDocumentStatus/ram:SpecifiedDocumentCharacteristic[ram:TypeCode = 'MEN' and ram:ValueAmount and ram:ValuePercent])))"
         flag="warning"
         id="BR-FR-CDV-14_MDT-207">
-        [BR-FR-CDV-14/MDT-207] : Lorsque le statut de traitement (MDT-105) est "212" (encaissé), il doit exister au moins un bloc "ram:SpecifiedDocumentCharacteristic" avec :
-        - un "ram:TypeCode" égal à "MEN"
-        - et une valeur "ram:ValueAmount" renseignée.
+        [BR-FR-CDV-14/MDT-207] : Si le statut est "Encaissé" (MDT-105 = 212), ALORS il doit y avoir au moins 1 Bloc MDG-43 avec une valeur de MDT-207 = MEN et tous les blocs MDG-43 avec une valeur MDT-207 = "MEN" doivent contenir une valeur MDT-215 (Montant) et une valeur de MDT-224 (pourcentage de TVA).
         Veuillez vérifier la présence et le contenu de ces éléments.
       </assert>
     </rule>
@@ -417,7 +427,7 @@
   </pattern>
   
   <pattern id="BR-FR-CDV-15">
-    <title>BR-FR-CDV-14 — Vérification des caractéristiques en cas de statut "Encaissé"</title>
+    <title>BR-FR-CDV-14 — Vérification de la présence d'un Motif quand nécessaire.</title>
     
     <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument/ram:ProcessConditionCode">
       <assert test="not((.) = '210' or (.) = '213' or (.) = '501' or (.) = '207' or (.) = '206' or (.) = '208') or (((.) = '210' or (.) = '213' or (.) = '501' or (.) = '207' or (.) = '206' or (.) = '208') and ../ram:SpecifiedDocumentStatus/ram:ReasonCode)"
@@ -426,22 +436,32 @@
         [BR-FR-CDV-15/MDT-113] : Code Statut : "<value-of select='.'/>" : lorsque le statut (MDT-105 ou MDT-115) est égal à 210 (Refusée), 123 (Rejetée), 501 (Irrecevable), 207 (Litige), 206 (Suspendue) pu 208 (Approuvée Partiellement), lors un MOTIF (MDT-113) DOIT être présent.
         Veuillez vérifier la présence et le contenu du MOTIF (MDT-113).
       </assert>
-    </rule>
+    </rule>    
+  </pattern>
+  
+  <pattern id="BR-FR-CDV-16"> <!-- V1.4.0 ajout de exists() -->
+    <title>BR-FR-CDV-16 — Présence obligatoire de MDT-124-2</title>
     
+    <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument/ram:SpecifiedDocumentStatus">
+      <assert test="exists(ram:SequenceNumeric)" 
+        flag="warning" 
+        id="BR-FR-CDV-16_MDT-124-2">
+        [BR-FR-CDV-16/MDT-124-2] : Le numéro incrémental de détail de statut (MDT-124-2) est obligatoire si un détail de statut (MDG-37) est présent.
+      </assert>
+    </rule>
   </pattern>
   
   
-  
-  <pattern id="BR-FR-CDV-CL-01"> <!-- CYS3 : test différent pour CDV PPF -->
+  <pattern id="BR-FR-CDV-CL-01"> <!-- CYS3 : test différent pour CDV PPF V1.4 : matricule PPF est 0000 ici V1.4.0 fix Xpath du contrôle était faux pour les autres valeurs que REGULATED --> 
     <title>BR-FR-CDV-CL-01 — Liste fermée de valeurs pour MDT-2</title>
     
     <rule context="rsm:CrossDomainAcknowledgementAndResponse/rsm:ExchangedDocumentContext">
-      <let name="TestPPF" value="(count(../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID) = 1 and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID[@schemeID='0238'] = '9998' and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:RoleCode = 'DFH')"/>
-      <assert test="(not($TestPPF) and (./ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID = 'REGULATED' or . = 'NON_REGULATED' or . = 'B2C' or . = 'B2BINT' or . = 'OUTOFSCOPE')) or ($TestPPF and (string-length(normalize-space(./ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID)) &lt;= 3))"
+      <let name="TestPPF" value="(count(../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID) = 1 and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:GlobalID[@schemeID='0238'] = '0000' and ../rsm:ExchangedDocument/ram:RecipientTradeParty/ram:RoleCode = 'DFH')"/>
+      <assert test="(not($TestPPF) and (ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID = ('REGULATED' ,'NON_REGULATED','B2C' ,'B2CINT','B2BINT', 'OUTOFSCOPE'))) or ($TestPPF and (string-length(normalize-space(ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID)) &lt;= 3))"
         flag="warning"
         id="BR-FR-CDV-CL-01_MDT-2">
-        [BR-FR-CDV-CL-01/MDT-2] : La valeur de MDT-2 doit être l'une des suivantes : "REGULATED", "NON_REGULATED", "B2C", "B2BINT", "OUTOFSCOPE" sauf pour un CDV pour le PPF pourlequel le nombre de caractères DOIT être inférieur à 3. 
-        Valeur actuelle : CDV PPF ? (true) : "<value-of select='$TestPPF'/>" - Valeur MDT-2 : "<value-of select='./ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID'/>". Veuillez corriger cette valeur si nécessaire.
+        [BR-FR-CDV-CL-01/MDT-2] : La valeur de MDT-2 doit être l'une des suivantes : "REGULATED", "NON_REGULATED", "B2C", "B2CINT", "B2BINT", "OUTOFSCOPE" sauf pour un CDV pour le PPF pourlequel le nombre de caractères DOIT être inférieur à 3. 
+        Valeur actuelle : CDV PPF ? (true) : "<value-of select='$TestPPF'/>" - Valeur MDT-2 : "<value-of select='ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID'/>". Veuillez corriger cette valeur si nécessaire.
       </assert>
     </rule>
     
@@ -530,7 +550,7 @@
     
   </pattern>
   
-  <pattern id="BR-FR-CDV-CL-05">
+  <pattern id="BR-FR-CDV-CL-05"> <!-- V1.4.0 Ajout de 5 (phase traitement) -->
     <title>BR-FR-CDV-CL-05 — Contrôle des statuts MDT-88 selon MDT-77</title>
     
     <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument">
@@ -550,7 +570,9 @@
         Valeur actuelle : "<value-of select='ram:StatusCode'/>".
       </assert>
       
-      <!-- Phase Traitement : MDT-77 = 23 - CYS3 ../ram:TypeCode + valeur absente -->
+      <!-- Phase Traitement : MDT-77 = 23 - CYS3 ../ram:TypeCode  -->
+      <!-- V1.4.0 Ajout de 5 (phase traitement) -->
+      
       <assert test="../ram:TypeCode != '23' or 
         ram:StatusCode = '45' or 
         ram:StatusCode = '39' or 
@@ -560,11 +582,12 @@
         ram:StatusCode = '47' or 
         ram:StatusCode = '46' or 
         ram:StatusCode = '1'or
+        ram:StatusCode = '5'or
         not(ram:StatusCode)"
         flag="warning"
         id="BR-FR-CDV-CL-05_MDT-88_23">
         [BR-FR-CDV-CL-05/MDT-88] : Lorsque MDT-77 = "23" (Phase Traitement), si présent, MDT-88 doit être l’un des codes suivants :
-        "45", "39", "37", "50", "49", "47", "46", "1".
+        "45", "39", "37", "50", "49", "47", "46", "1", "5" (pour les autres statuts)
         Valeur actuelle : "<value-of select='ram:StatusCode'/>".
       </assert>
       
@@ -629,7 +652,10 @@
     
   </pattern>
   
-  <pattern id="BR-FR-CDV-CL-09"> <!-- CYS3 : complété des motifs par statut -->
+  <pattern id="BR-FR-CDV-CL-09"> 
+    <!-- CYS3 : complété des motifs par statut 
+      V1.4.0 Ajout des motifs de Refus B2G -->
+    
     <title>BR-FR-CDV-CL-09 — Liste fermée de codes motifs de statuts</title>
     
     <rule context="rsm:AcknowledgementDocument/ram:ReferenceReferencedDocument/ram:SpecifiedDocumentStatus/ram:ReasonCode">
@@ -637,7 +663,8 @@
         flag="warning"
         id="BR-FR-CDV-CL-09_MDT-113">
         [BR-FR-CDV-CL-09/MDT-113] : Le code motif de statut (MDT-113) : "<value-of select='.'/>" n'est pas dans la liste des codes autorisés :
-        "NON_TRANSMISE", "JUSTIF_ABS", "ROUTAGE_ERR", "AUTRE", "COORD_BANC_ERR", "TX_TVA_ERR", "MONTANTTOTAL_ERR", "CALCUL_ERR", "NON_CONFORME", "DOUBLON", "DEST_INC", "DEST_ERR", "TRANSAC_INC", "EMMET_INC", "CONTRAT_TERM", "DOUBLE_FACT", "CMD_ERR", "ADR_ERR", "SIRET_ERR", "CODE_ROUTAGE_ERR", "REF_CT_ABSENT", "REF_ERR", "PU_ERR", "REM_ERR", "QTE_ERR", "ART_ERR", "MODPAI_ERR", "QUALITE_ERR", "LIVR_INCOMP", "REJ_SEMAN", "REJ_UNI", "REJ_COH", "REJ_ADR", "REJ_CONT_B2G", "REJ_REF_PJ", "REJ_ASS_PJ", "IRR_VIDE_F", "IRR_TYPE_F", "IRR_SYNTAX", "IRR_TAILLE_PJ", "IRR_NOM_PJ", "IRR_VID_PJ", "IRR_EXT_DOC", "IRR_TAILLE_F", "IRR_ANTIVIRUS".
+        "RETRAIT_MAN_SERV", "ST_CT_NON_DECLAR", "SUPPR_COMP_AVOIR", "TRANSF_PMNT_REGIE", "CONTACT_ACHTR", 
+        "NON_TRANSMISE", "JUSTIF_ABS", "ROUTAGE_ERR", "AUTRE", "COORD_BANC_ERR", "TX_TVA_ERR", "MONTANTTOTAL_ERR", "CALCUL_ERR", "NON_CONFORME", "DOUBLON", "DEST_INC", "DEST_ERR", "TRANSAC_INC", "EMMET_INC", "CONTRAT_TERM", "DOUBLE_FACT", "CMD_ERR", "ADR_ERR", "SIRET_ERR", "CODE_ROUTAGE_ERR", "REF_CT_ABSENT", "REF_ERR", "PU_ERR", "REM_ERR", "QTE_ERR", "ART_ERR", "MODPAI_ERR", "QUALITE_ERR", "LIVR_INCOMP", "REJ_SEMAN", "REJ_UNI", "REJ_COH", "REJ_ADR", "REJ_CONT_B2G", "REJ_REF_PJ", "REJ_ASS_PJ", "IRR_VIDE_F", "IRR_TYPE_F", "IRR_SYNTAX", "IRR_TAILLE_PJ", "IRR_NOM_PJ", "IRR_VID_PJ", "IRR_EXT_DOC", "IRR_TAILLE_F", "IRR_ANTIVIRUS", "IRR_NOM_F".
         Veuillez corriger cette valeur si nécessaire.
       </assert>
 
@@ -658,14 +685,30 @@
         "MONTANTTOTAL_ERR", "CALCUL_ERR", "DOUBLON", "DEST_INC", "ADR_ERR", "REJ_SEMAN", "REJ_UNI", "REJ_COH", "REJ_ADR", "REJ_CONT_B2G", "REJ_REF_PJ", "REJ_ASS_PJ".
         Veuillez corriger cette valeur si nécessaire.
       </assert>
-
+ 
+      <!-- V1.4.0 : ajout d'un test pour exclure les factures B2G de ce contrôle -->
       <assert test="(../../ram:ProcessConditionCode != '210' and (not(../ram:ProcessConditionCode) or ../ram:ProcessConditionCode != '210' )) or (../../ram:ProcessConditionCode = '210' and ../ram:ProcessConditionCode != '210' )
+        or (/rsm:CrossDomainAcknowledgementAndResponse/rsm:ExchangedDocument/ram:SenderTradeParty/ram:GlobalID[@schemeID = '0238'] = '9999') 
         or (.) = 'TX_TVA_ERR' or (.) = 'MONTANTTOTAL_ERR' or (.) = 'CALCUL_ERR' or (.) = 'NON_CONFORME' or (.) = 'DOUBLON' or (.) = 'DEST_ERR'
         or (.) = 'TRANSAC_INC' or (.) = 'EMMET_INC' or (.) = 'CONTRAT_TERM' or (.) = 'DOUBLE_FACT' or (.) = 'CMD_ERR' or (.) = 'ADR_ERR' or (.) = 'REF_CT_ABSENT'"
         flag="warning"
         id="BR-FR-CDV-CL-09_MDT-113_210">
         [BR-FR-CDV-CL-09/MDT-113_210] : Le code motif de statut (MDT-113) : "<value-of select='.'/>", n'est pas dans la liste des codes autorisés pour le statut REFUSÉE (210) :
         "TX_TVA_ERR", "MONTANTTOTAL_ERR", "CALCUL_ERR", "NON_CONFORME", "DOUBLON", "DEST_ERR", "TRANSAC_INC", "EMMET_INC", "CONTRAT_TERM", "DOUBLE_FACT", "CMD_ERR", "ADR_ERR", "REF_CT_ABSENT".
+        Veuillez corriger cette valeur si nécessaire.
+      </assert>
+      
+      <!-- V1.4.0 : ajout de cette règle pour contrôler les motifs de refus B2G - fix04 Condition B2G corrected : not(//rsm:ExchangedDocument/ram:SenderTradeParty/ram:GlobalID[@schemeID = '0238'] = '9999')  -->
+      <assert test="(../../ram:ProcessConditionCode != '210' and (not(../ram:ProcessConditionCode) or ../ram:ProcessConditionCode != '210' )) or (../../ram:ProcessConditionCode = '210' and ../ram:ProcessConditionCode != '210' )
+        or not(exists(//rsm:ExchangedDocument/ram:SenderTradeParty/ram:GlobalID)) or not(//rsm:ExchangedDocument/ram:SenderTradeParty/ram:GlobalID[@schemeID = '0238'] = '9999')
+        or (//rsm:ExchangedDocument/ram:SenderTradeParty/ram:GlobalID[@schemeID = '0238'] = '9999'
+        and ((.) = 'RETRAIT_MAN_SERV' or (.) = 'ST_CT_NON_DECLAR' or (.) = 'SUPPR_COMP_AVOIR' or (.) = 'TRANSF_PMNT_REGIE' or (.) = 'AUTRE' or (.) = 'COORD_BANC_ERR'
+        or (.) = 'TX_TVA_ERR' or (.) = 'MONTANTTOTAL_ERR' or (.) = 'CALCUL_ERR' or (.) = 'NON_CONFORME' or (.) = 'DOUBLON' or (.) = 'DEST_ERR'
+        or (.) = 'TRANSAC_INC' or (.) = 'EMMET_INC' or (.) = 'CONTRAT_TERM' or (.) = 'DOUBLE_FACT' or (.) = 'CMD_ERR' or (.) = 'ADR_ERR' or (.) = 'REF_CT_ABSENT' or (.) = 'LIVR_INCOMP'))"
+        flag="warning"
+        id="BR-FR-CDV-CL-09_MDT-113_210B2G">
+        [BR-FR-CDV-CL-09/MDT-113_210B2G] : SEULEMENT B2G : Le code motif de statut (MDT-113) : "<value-of select='.'/>", n'est pas dans la liste des codes autorisés pour le statut REFUSÉE B2G (210) :
+        "RETRAIT_MAN_SERV", "ST_CT_NON_DECLAR", "SUPPR_COMP_AVOIR", "TRANSF_PMNT_REGIE", "CONTACT_ACHTR", "AUTRE", "COORD_BANC_ERR", "TX_TVA_ERR", "MONTANTTOTAL_ERR", "CALCUL_ERR", "NON_CONFORME", "DOUBLON", "DEST_ERR", "TRANSAC_INC", "EMMET_INC", "CONTRAT_TERM", "DOUBLE_FACT", "CMD_ERR", "ADR_ERR", "REF_CT_ABSENT", "LIVR_INCOMP".
         Veuillez corriger cette valeur si nécessaire.
       </assert>
 
@@ -710,11 +753,11 @@
       </assert>
       
       <assert test="(../../ram:ProcessConditionCode != '501' and (not(../ram:ProcessConditionCode) or ../ram:ProcessConditionCode != '501' )) or (../../ram:ProcessConditionCode = '501' and ../ram:ProcessConditionCode != '501' )
-        or (.) = 'IRR_VIDE_F'  or (.) = 'IRR_TYPE_F'  or (.) = 'IRR_SYNTAX'  or (.) = 'IRR_TAILLE_PJ'  or (.) = 'IRR_NOM_PJ'  or (.) = 'IRR_VID_PJ'  or (.) = 'IRR_EXT_DOC'  or (.) = 'IRR_TAILLE_F'  or (.) = 'IRR_ANTIVIRUS'"
+        or (.) = 'IRR_VIDE_F'  or (.) = 'IRR_TYPE_F'  or (.) = 'IRR_SYNTAX'  or (.) = 'IRR_TAILLE_PJ'  or (.) = 'IRR_NOM_PJ'  or (.) = 'IRR_VID_PJ'  or (.) = 'IRR_EXT_DOC'  or (.) = 'IRR_TAILLE_F'  or (.) = 'IRR_ANTIVIRUS'  or (.) = 'IRR_NOM_F'"
         flag="warning"
         id="BR-FR-CDV-CL-09_MDT-113_501">
         [BR-FR-CDV-CL-09/MDT-113_501] : Le code motif de statut (MDT-113) : "<value-of select='.'/>", n'est pas dans la liste des codes autorisés pour le statut IRRECEVABLE (501) :
-        "IRR_VIDE_F", "IRR_TYPE_F", "IRR_SYNTAX", "IRR_TAILLE_PJ", "IRR_NOM_PJ", "IRR_VID_PJ", "IRR_EXT_DOC, "IRR_TAILLE_F", "IRR_ANTIVIRUS". Veuillez corriger cette valeur si nécessaire.
+        "IRR_VIDE_F", "IRR_TYPE_F", "IRR_SYNTAX", "IRR_TAILLE_PJ", "IRR_NOM_PJ", "IRR_VID_PJ", "IRR_EXT_DOC, "IRR_TAILLE_F", "IRR_ANTIVIRUS", "IRR_NOM_F". Veuillez corriger cette valeur si nécessaire.
       </assert>
       
       

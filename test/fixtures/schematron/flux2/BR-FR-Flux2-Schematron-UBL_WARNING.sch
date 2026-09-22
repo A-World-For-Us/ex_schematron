@@ -2,11 +2,12 @@
 
 <!--
 
-    Schematron Licensed under European Union Public Licence (EUPL) version 1.3.1
+    Schematron Licensed under European Union Public Licence (EUPL) version 1.4.0
     Réalisé par Quentin Houard et Cyrille Sautereau pour le compte du FNFE-MPE.
 
 -->
-<!-- Schematron 20260216_BR-FR-Flux2-Schematron-UBL_V1.3.0 - last update 2026 04 30 -->
+<!-- Schematron BR-FR-Flux2-Schematron-UBL_V1.4.0.04 - last fix04 2026 09 04 
+    Mode "WARNING" APPLICABLE UNIQUEMENT EN RECEPTION DES LA PUBLICATION ET JUSQU'AU 30 SEPTEMBRE 2026 AU PLUS TARD -->
 
 <schema xmlns="http://purl.oclc.org/dsdl/schematron"
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
@@ -42,9 +43,9 @@
     <xsl:variable name="isFormatValid" select="matches($date, '^20\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$')"/>
     
     <!-- Extraction des composantes -->
-    <xsl:variable name="year" select="number(substring($date, 1, 4))"/>
-    <xsl:variable name="month" select="number(substring($date, 6, 2))"/>
-    <xsl:variable name="day" select="number(substring($date, 9, 2))"/>
+    <xsl:variable name="year" select="xs:decimal(substring($date, 1, 4))"/>
+    <xsl:variable name="month" select="xs:decimal(substring($date, 6, 2))"/>
+    <xsl:variable name="day" select="xs:decimal(substring($date, 9, 2))"/>
     
     <!-- Calcul année bissextile -->
     <xsl:variable name="isLeapYear"
@@ -74,7 +75,7 @@
   <xsl:function name="custom:is-valid-billing-mode" as="xs:boolean">
     <xsl:param name="code" as="xs:string?"/>
     <xsl:variable name="custom:billing-modes" as="xs:string"
-      select="'B1 S1 M1 B2 S2 M2 S3 B4 S4 M4 S5 S6 B7 S7 B8 S8 M8'"/>
+      select="'B1 S1 M1 B2 S2 M2 S3 B4 S4 M4 S5 S6 B7 S7 B8 S8 M8 B9 S9 M9'"/>
     <xsl:sequence select="$code = tokenize($custom:billing-modes, '\s+')"/>
   </xsl:function>
   
@@ -88,7 +89,7 @@
   <!-- BR-FR-11, 12, 13 et 20 : Code traitement BAR -->
   <xsl:function name="custom:is-valid-bar-treatment" as="xs:boolean">
     <xsl:param name="value" as="xs:string?"/>
-    <xsl:sequence select="$value = ('B2B', 'B2BINT', 'B2C', 'OUTOFSCOPE', 'ARCHIVEONLY')"/>
+    <xsl:sequence select="$value = ('B2B', 'B2BINT', 'B2C', 'B2CINT', 'OUTOFSCOPE', 'ARCHIVEONLY')"/>
   </xsl:function>
   
   <!-- BR-FR-12 : Codes EAS autorisés -->
@@ -162,14 +163,23 @@
     <xsl:sequence select="matches($amount, '^\d{1,19}(\.\d{1,6})?$') and string-length(replace($amount, '\.', '')) le 19"/>
   </xsl:function>
   
-  <!-- BR-FR-DEC-04 : taux de TVA positifs, 4 positions, max 2 décimales -->
+  <!-- BR-FR-DEC-03 : prix unitaires positifs, 19 positions, max 6 décimales -->
+  <xsl:function name="custom:is-valid-decimal-19-6" as="xs:boolean">
+    <xsl:param name="amount" as="xs:string?"/>
+    <xsl:sequence select="matches($amount, '^[-]?\d{1,19}(\.\d{1,6})?$') and string-length(replace($amount, '\.', '')) le 19"/>
+  </xsl:function>
+  
+  <!-- BR-FR-DEC-04 : taux de TVA positifs, 4 positions, max 2 décimales positif ou négatif -->
   <xsl:function name="custom:is-valid-percent-4-2-positive" as="xs:boolean">
     <xsl:param name="percent" as="xs:string?"/>
     <xsl:sequence select="matches($percent, '^\d{1,4}(\.\d{1,2})?$') and string-length(replace($percent, '\.', '')) le 4"/>
   </xsl:function>
  
-  <!-- BR-FR-MV-XX : fonction de test du cadre de facturation B8, S8, M8 -->
+  <!-- BR-FR-MV-XX : fonction de test du cadre de facturation B8, S8, M8 
+   Corrected V1.4 for M9, S9 , B9 facture bi-directionnelle -->
   
+  
+  <!--
   <xsl:function name="custom:isSpecialContract" as="xs:boolean">
     <xsl:param name="context" as="element()?"/>
     <xsl:sequence select="
@@ -181,7 +191,31 @@
       )
       "/>
   </xsl:function>
-     
+   -->
+
+
+  <xsl:function name="custom:isSpecialContract" as="xs:boolean">
+    <xsl:param name="context" as="element()?"/>
+    <xsl:sequence select="
+      exists($context/cbc:ProfileID)
+      and normalize-space($context/cbc:ProfileID) = ('S8', 'B8', 'M8', 'S9', 'B9', 'M9')"/>
+  </xsl:function>
+  
+  
+  <xsl:function name="custom:isSpecialContractMV" as="xs:boolean">
+    <xsl:param name="context" as="element()?"/>
+    <xsl:sequence select="
+      exists($context/cbc:ProfileID)
+      and normalize-space($context/cbc:ProfileID) = ('S8', 'B8', 'M8')"/>
+  </xsl:function>
+  
+  <xsl:function name="custom:isSpecialContractBD" as="xs:boolean">
+    <xsl:param name="context" as="element()?"/>
+    <xsl:sequence select="
+      exists($context/cbc:ProfileID)
+      and normalize-space($context/cbc:ProfileID) = ('S9', 'B9', 'M9')"/>
+  </xsl:function>
+
 
   <!-- Règles de validation UBL -->
   <pattern id="BR-FR-01">
@@ -211,13 +245,13 @@
       </assert>
     </rule>
     
-    <!-- EXT-FR-FE-136 : Referenced invoice ID at line level --> <!-- CYS 2 Correction Xpath add cac:BillingReference -->
-    <rule context="ubl:Invoice/cac:InvoiceLine/cac:BillingReference/cac:DocumentReference/cbc:ID | cn:CreditNote/cac:CreditNoteLine/cac:BillingReference/cac:DocumentReference/cbc:ID">
+    <!-- EXT-FR-FE-136 : Referenced invoice ID at line level --> <!-- CYS 2 Correction Xpath add cac:BillingReference --><!-- V1.4.0 fix Correction Xpath add cac:InvoiceDocumentReference/cbc:ID instead of cac:DocumentReference/cbc:ID -->
+    <rule context="ubl:Invoice/cac:InvoiceLine/cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID | cn:CreditNote/cac:CreditNoteLine/cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID">
       <assert test="string-length(.) le 35" flag="warning" id="BR-FR-01_EXT-FR-FE-136-1">
-        [BR-FR-01/EXT-FR-FE-136 : L'identifiant de facture référencée en ligne (cbc:ID) ne doit pas dépasser 35 caractères. Valeur actuelle : "<value-of select='.'/>".
+        [BR-FR-01/EXT-FR-FE-136] : L'identifiant de facture référencée en ligne (cbc:ID) ne doit pas dépasser 35 caractères. Valeur actuelle : "<value-of select='.'/>".
         Veuillez vérifier que l'identifiant respecte cette limite.
       </assert>
-      <assert test="custom:is-valid-id-format(.)" flag="warning" id="BR-FR-01_BT-EXT-FR-FE-136-2">
+      <assert test="custom:is-valid-id-format(.)" flag="warning" id="BR-FR-01_EXT-FR-FE-136-2">
         [BR-FR-01/EXT-FR-FE-136] : L'identifiant de facture référencée en ligne (cbc:ID) contient des caractères non autorisés. Valeur actuelle : "<value-of select='.'/>".
         Seuls les caractères alphanumériques et les symboles + - _ / sont autorisés, sans espaces.
       </assert>
@@ -242,10 +276,10 @@
       </assert>
     </rule>
     
-    <!-- EXT-FR-FE-136 : Referenced invoice ID at line level V1.3.1 Xpath Corrected /cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID -->
+    <!-- EXT-FR-FE-136 : Referenced invoice ID at line level --><!-- V1.4.0 fix Correction Xpath : /cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID -->
     <rule context="ubl:Invoice/cac:InvoiceLine/cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID | cn:CreditNote/cac:CreditNoteLine/cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID">
       <assert test="custom:is-valid-id-format(.)" flag="warning" id="BR-FR-02_EXT-FR-FE-136">
-        [BR-FR-03/EXT-FR-FE-136] : L'identifiant de facture référencée en ligne (cbc:ID) doit respecter le format autorisé : caractères alphanumériques et les symboles - + _ /. Il ne doit pas contenir uniquement des espaces, ni commencer ou se terminer par un espace, ni contenir d'espaces consécutifs. Valeur actuelle : "<value-of select='.'/>".
+        [BR-FR-02/EXT-FR-FE-136] : L'identifiant de facture référencée en ligne (cbc:ID) doit respecter le format autorisé : caractères alphanumériques et les symboles - + _ /. Il ne doit pas contenir uniquement des espaces, ni commencer ou se terminer par un espace, ni contenir d'espaces consécutifs. Valeur actuelle : "<value-of select='.'/>".
         Veuillez corriger le format de l'identifiant.
       </assert>
     </rule>
@@ -309,8 +343,8 @@
       </assert>
     </rule>
     
-    <!-- EXT-FR-FE-138 -->
-    <rule context="ubl:Invoice/cac:InvoiceLine/cac:DocumentReference/cbc:IssueDate | cn:CreditNote/cac:CreditNoteLine/cac:DocumentReference/cbc:IssueDate">
+    <!-- EXT-FR-FE-138 --> <!-- V1.4.0 fix Correction Xpath : /cac:BillingReference/cac:InvoiceDocumentReference/cbc:IssueDate -->
+    <rule context="ubl:Invoice/cac:InvoiceLine/cac:BillingReference/cac:InvoiceDocumentReference/cbc:IssueDate | cn:CreditNote/cac:CreditNoteLine/cac:BillingReference/cac:InvoiceDocumentReference/cbc:IssueDate">
       <assert test="custom:is-valid-date-format(.)" flag="warning" id="BR-FR-03_EXT-FR-FE-138">
         [BR-FR-03/EXT-FR-FE-138] : La date d’émission de la facture référencée en ligne doit contenir une année entre 2000 et 2099. Valeur actuelle : "<value-of select='.'/>".
         Veuillez vérifier la validité de la date.
@@ -378,7 +412,7 @@
     <title>BR-FR-05 — Présence obligatoire des mentions légales dans les notes (BG-3)</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
-      <let name="allNotes" value="string-join(./cbc:Note, '')"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <assert test="contains($allNotes, '#PMT#')" flag="warning" id="BR-FR-05_BT-22-1">
         [BR-FR-05/BT-22] : La mention relative aux frais de recouvrement (code PMT) est absente. Elle est obligatoire dans les notes (BG-3).
       </assert>
@@ -395,7 +429,7 @@
     <title>BR-FR-06 — Unicité des codes sujets dans les notes (BG-3)</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
-      <let name="allNotes" value="string-join(./cbc:Note, '')"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <assert test="count(tokenize($allNotes, '#PMT#')) - 1  le 1" flag="warning" id="BR-FR-06_BT-21-1">
         [BR-FR-06/BT-21] : Le code sujet PMT (indemnité forfaitaire pour frais de recouvrement) ne doit apparaître qu'une seule fois dans les notes (BG-3).
       </assert>
@@ -413,11 +447,12 @@
   
   <pattern id="BR-FR-08">
     <title>BR-FR-08 — Validation du mode de facturation (BT-23)</title>
-    
-    <rule context="ubl:Invoice/cbc:ProfileID | cn:CreditNote/cbc:ProfileID">
-      <assert test="custom:is-valid-billing-mode(.)" flag="warning" id="BR-FR-08_BT-23">
-        [BR-FR-08/BT-23] : La valeur du mode de facturation (ram:ID) n’est pas autorisée. Valeurs acceptées : B1, S1, M1, B2, S2, M2, B4, S4, M4, S5, S6, B7, S7.
-        Valeur actuelle : "<value-of select='.'/>".
+
+    <!-- BT-23  V1.4 Ajout de l'obligation de présence fix04 - xpath du value-of corrigé -->
+    <rule context="ubl:Invoice | cn:CreditNote">
+      <assert test="custom:is-valid-billing-mode(cbc:ProfileID) and exists(cbc:ProfileID)" flag="warning" id="BR-FR-08_BT-23">
+        [BR-FR-08/BT-23] : La valeur du cadre de facturation (ram:ID) est absente ou n’est pas autorisée. Valeurs acceptées : B1, S1, M1, B2, S2, M2, S3, B4, S4, M4, S5, S6, B7, S7, B8, S8, M8, B9, S9, M9.
+        Valeur actuelle : "<value-of select='cbc:ProfileID'/>".
         Veuillez utiliser une valeur conforme à la liste des modes de facturation autorisés.
       </assert>
     </rule>
@@ -532,7 +567,7 @@
     <title>BR-FR-11 — SIREN obligatoire et valide si traitement BAR/B2B (BT-47)</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
-      <let name="allNotes" value="string-join(./cbc:Note, '')[contains(., '#BAR#')]"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <let name="afterBar" value="substring-after($allNotes, '#BAR#')"/>
       <let name="barTreatment" value="if (contains($afterBar, '#')) then substring-before($afterBar, '#') else $afterBar"/> 
       <let name="siren" value="cac:AccountingCustomerParty/cac:Party/cac:PartyLegalEntity/cbc:CompanyID[@schemeID='0002']"/>
@@ -663,13 +698,14 @@
     </rule>
   </pattern>
   <pattern id="BR-FR-20">
+    <!-- V1.4.0 fix : ajout de la valeur B2CINT -->
     <title>BR-FR-20 — Vérification du traitement associé à une note avec code sujet "BAR" (BT-21)</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
-      <let name="allNotes" value="string-join(./cbc:Note, '')[contains(., '#BAR#')]"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <let name="afterBar" value="substring-after($allNotes, '#BAR#')"/>
       <let name="barTreatment" value="if (contains($afterBar, '#')) then substring-before($afterBar, '#') else $afterBar"/>    
-      <let name="invalidNotes" value="$barTreatment != '' and $barTreatment != 'B2B' and $barTreatment != 'B2BINT' and $barTreatment != 'B2C' and $barTreatment != 'OUTOFSCOPE' and $barTreatment != 'ARCHIVEONLY'"/>
+      <let name="invalidNotes" value="$barTreatment != '' and $barTreatment != 'B2B' and $barTreatment != 'B2BINT' and $barTreatment != 'B2C' and $barTreatment != 'B2CINT' and $barTreatment != 'OUTOFSCOPE' and $barTreatment != 'ARCHIVEONLY'"/>
       
       <assert test="not($invalidNotes)" flag="warning" id="BR-FR-20_BT-21">
         [BR-FR-20/BT-21] : Lorsqu’une note a pour code sujet « BAR » (cbc:SubjectCode), la valeur associée (cbc:Note) doit être l’une des suivantes : B2B, B2BINT, B2C, OUTOFSCOPE, ARCHIVEONLY.
@@ -681,7 +717,7 @@
     <title>BR-FR-21 — Vérification du BT-49 en cas de traitement BAR/B2B et hors cas autofacture</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
-      <let name="allNotes" value="string-join(./cbc:Note, '')[contains(., '#BAR#')]"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <let name="afterBar" value="substring-after($allNotes, '#BAR#')"/>
       <let name="treatment" value="if (contains($afterBar, '#')) then substring-before($afterBar, '#') else $afterBar"/>   
       <let name="typeCode" value="cbc:InvoiceTypeCode | cbc:CreditNoteTypeCode"/>
@@ -699,7 +735,7 @@
     <title>BR-FR-22 — Vérification du BT-34 en cas de traitement BAR/B2B et en autofacture</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
-      <let name="allNotes" value="string-join(./cbc:Note, '')[contains(., '#BAR#')]"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <let name="afterBar" value="substring-after($allNotes, '#BAR#')"/>
       <let name="treatment" value="if (contains($afterBar, '#')) then substring-before($afterBar, '#') else $afterBar"/>   
       <let name="typeCode" value="cbc:InvoiceTypeCode | cbc:CreditNoteTypeCode"/>
@@ -707,7 +743,8 @@
       <let name="endpointID" value="cac:AccountingSupplierParty/cac:Party/cbc:EndpointID"/>
       <let name="schemeID" value="cac:AccountingSupplierParty/cac:Party/cbc:EndpointID/@schemeID"/>
       
-      <assert test="not($treatment) or not($typeCode = ('389', '501', '500', '471', '473', '261', '502')) or 
+      <!-- V1.4.0 fix04 : correction not($treatment='B2B') -->
+      <assert test="not($treatment='B2B') or not($typeCode = ('389', '501', '500', '471', '473', '261', '502')) or 
         (starts-with($endpointID, $siren) and $schemeID = '0225')" flag="warning" id="BR-FR-22_BT-34">
         [BR-FR-22/BT-34] : Si le traitement est BAR/B2B et que le type de document (cbc:InvoiceTypeCode) est en autofacture (389, 501, 500, 471, 473, 261, 502), alors le BT-34 (cbc:EndpointID du vendeur) doit commencer par le SIREN (cbc:ID[@schemeID='0002']) et le schemeID doit être égal à "0225".
         Valeurs actuelles : EndpointID="<value-of select='$endpointID'/>", schemeID="<value-of select='$schemeID'/>", SIREN="<value-of select='$siren'/>".
@@ -921,47 +958,18 @@
     </rule>
   </pattern>
   
-  <pattern id="BR-FR-28">
+  <pattern id="BR-FR-28"> <!-- Correction V1.4.0  une seule règle suffit (et déjà dans le profil EXTENDED BR-FREXT-51-2) -->
     <title>BR-FR-28 — Validation de la valeur d’attribut d’article (BG-32)</title>
-    
-    <!-- BG-32 : Vérification dans AdditionalItemProperty - VCYS3 : et pas les deux -->
-    <rule context="ubl:Invoice/cac:Item/cac:AdditionalItemProperty | cn:CreditNote/cac:Item/cac:AdditionalItemProperty">
-      <assert test="(cbc:Value or (cbc:ValueQuantity and cbc:ValueQuantity/@unitCode)) and not(cbc:Value or (cbc:ValueQuantity and cbc:ValueQuantity/@unitCode))"
-        flag="warning" id="BR-FR-28_BT-161">
-        [BR-FR-28/BT-161] : Le groupe Attribut d’article (BG-32) doit contenir soit une valeur d’attribut (BT-161 : cbc:Value), soit une valeur d’attribut avec unité de mesure (EXT-FR-FE-160 : cbc:ValueQuantity) accompagnée de son unité (EXT-FR-FE-161 : @unitCode), et pas les deux.
-        Veuillez fournir une valeur d’attribut ou une valeur mesurée avec son unité et pas les deux.
+
+    <rule context="ubl:Invoice/cac:InvoiceLine/cac:Item/cac:AdditionalItemProperty | cn:CreditNote/cac:CreditNoteLine/cac:Item/cac:AdditionalItemProperty">
+      <assert test="(exists(cbc:Value) and not(exists(cbc:ValueQuantity))) or (not(exists(cbc:Value)) and (exists(cbc:ValueQuantity[@unitCode!=''])))"
+        flag="warning" id="BR-FR-28-Value">
+        [BR-FR-28] : La valeur d’attribut (cbc:Value) ou la valeur (cbc:ValueQuantity avec unité de mesure) doivent être présents, mais pas les deux
+        Valeur actuelle Value : "<value-of select="cbc:Value"/>", Valeur actuelle Value Quantity : "<value-of select="cbc:ValueQuantity"/>". unité de mesure : "<value-of select="cbc:ValueQuantity/@unitCode"/>"
+        Veuillez fournir une valeur d’attribut valide ou utiliser une Valeur avec unité de mesure.
       </assert>
     </rule>
-    
-    <!-- BT-161 : Vérification de la valeur simple -->
-    <rule context="ubl:Invoice/cac:Item/cac:AdditionalItemProperty/cbc:Value | cn:CreditNote/cac:Item/cac:AdditionalItemProperty/cbc:Value">
-      <assert test="normalize-space(.) != ''"
-        flag="warning" id="BR-FR-28_Value">
-        [BR-FR-28/BT-161] : La valeur d’attribut (cbc:Value) ne doit pas être vide.
-        Valeur actuelle : "<value-of select="."/>".
-        Veuillez fournir une valeur d’attribut valide ou utiliser une mesure avec unité.
-      </assert>
-    </rule>
-    
-    <!-- EXT-FR-FE-160 : Vérification de la valeur mesurée -->
-    <rule context="ubl:Invoice/cac:Item/cac:AdditionalItemProperty/cbc:ValueQuantity | cn:CreditNote/cac:Item/cac:AdditionalItemProperty/cbc:ValueQuantity">
-      <assert test="normalize-space(.) != ''"
-        flag="warning" id="BR-FR-28_ValueQuantity">
-        [BR-FR-28/EXT-FR-FE-160] : La valeur mesurée (cbc:ValueQuantity) ne doit pas être vide.
-        Valeur actuelle : "<value-of select="."/>".
-        Veuillez fournir une valeur mesurée valide accompagnée de son unité.
-      </assert>
-    </rule>
-    
-    <!-- EXT-FR-FE-161 : Vérification de l’unité -->
-    <rule context="ubl:Invoice/cac:Item/cac:AdditionalItemProperty/cbc:ValueQuantity/@unitCode | cn:CreditNote/cac:Item/cac:AdditionalItemProperty/cbc:ValueQuantity/@unitCode">
-      <assert test="normalize-space(.) != ''"
-        flag="warning" id="BR-FR-28_UnitCode">
-        [BR-FR-28/EXT-FR-FE-161] : L’unité de mesure (@unitCode) ne doit pas être vide lorsqu’une valeur mesurée est fournie.
-        Valeur actuelle : "<value-of select="."/>".
-        Veuillez spécifier une unité de mesure conforme.
-      </assert>
-    </rule>
+ 
   </pattern>
   
   <pattern id="BR-FR-29">
@@ -1031,21 +1039,43 @@
   <pattern id="BR-FR-31"> 
     <title>BR-FR-31 — Note avec code sujet BAR : une seule valeur possible dans la liste</title>
     
-    <!-- Vérification présence d'une seule valeur codée (B2B, B2BINT, ...) avec code sujet BAR -->
+    <!-- Vérification présence d'une seule valeur codée (B2B, B2BINT, ...) avec code sujet BAR - V1.4 Ajout B2CINT -->
     <rule context="ubl:Invoice | cn:CreditNote">
       <let name="allBarNotes" value="concat(string-join(./cbc:Note[contains(., '#BAR#')], ''), '#')"/>
       <let name="countBarB2B" value="(string-length($allBarNotes) - string-length(replace($allBarNotes, 'BAR#B2B#', ''))) div 8"/>
       <let name="countBarB2BINT" value="(string-length($allBarNotes) - string-length(replace($allBarNotes, 'BAR#B2BINT#', ''))) div 11"/>
       <let name="countBarB2C" value="(string-length($allBarNotes) - string-length(replace($allBarNotes, 'BAR#B2C#', ''))) div 8"/>
+      <let name="countBarB2CINT" value="(string-length($allBarNotes) - string-length(replace($allBarNotes, 'BAR#B2CINT#', ''))) div 11"/>
       <let name="countBarOUTOFSCOPE" value="(string-length($allBarNotes) - string-length(replace($allBarNotes, 'BAR#OUTOFSCOPE#', ''))) div 15"/>
       <let name="countBarARCHIVEONLY" value="(string-length($allBarNotes) - string-length(replace($allBarNotes, 'BAR#ARCHIVEONLY#', ''))) div 16"/>
         
      
-      <assert test="($countBarB2B + $countBarB2BINT + $countBarB2C + $countBarOUTOFSCOPE + $countBarARCHIVEONLY) &lt;= 1" flag="warning" id="BR-FR-30_BT-21">
-        [BR-FR-30/BT-21] : Lorsque plusieurs notes ont le code sujet « BAR » (BT-21), Il ne peut y avoir qu'une seule valeur associée (BT-22, contenu de la note) parmi l’une des suivantes : B2B, B2BINT, B2C, OUTOFSCOPE, ARCHIVEONLY.
+      <assert test="($countBarB2B + $countBarB2BINT + $countBarB2C + $countBarB2CINT + $countBarOUTOFSCOPE + $countBarARCHIVEONLY) &lt;= 1" flag="warning" id="BR-FR-30_BT-21">
+        [BR-FR-31/BT-21] : Lorsque plusieurs notes ont le code sujet « BAR » (BT-21), Il ne peut y avoir qu'une seule valeur associée (BT-22, contenu de la note) parmi l’une des suivantes : B2B, B2BINT, B2C, B2CINT, OUTOFSCOPE, ARCHIVEONLY.
         Valeur fournie : B2B : <value-of select="$countBarB2B"/> , B2BINT : <value-of select="$countBarB2BINT"/>, B2C : <value-of select="$countBarB2C"/>, OUTOFSCOPE : <value-of select="$countBarOUTOFSCOPE"/>, ARCHIVEONLY : <value-of select="$countBarARCHIVEONLY" />". Veuillez corriger la valeur ou retirer le code sujet « BAR ».
       </assert>
     </rule>
+  </pattern>
+  
+  <pattern id="BR-FR-32"> 
+    <title>BR-FR-32 — Le SIREN contient exactement 9 chiffres </title>
+    
+    <!-- Vérification que les SIREN sont composés de 9 chiffres matches($siret, '^\d{14}$') -->
+
+    <rule context="//cac:PartyLegalEntity/cbc:CompanyID[@schemeID = '0002']">
+      
+      <assert test="matches(normalize-space(.), '^\d{9}$')" flag="warning" id="BR-FR-32-LEGALID">
+        [BR-FR-32/LEGALID] : Tout identifiant légal d'une Partie avec schemeID = '0002' DOIT être composé de 9 chiffres.
+      </assert>
+    </rule>
+    
+    <rule context="//cac:PartyIdentification/cbc:ID[@schemeID = '0002' or @schemeID = '0231']">
+      
+      <assert test="matches(normalize-space(.), '^\d{9}$')" flag="warning" id="BR-FR-32-ID">
+        [BR-FR-32/ID] : Tout identifiant d'une Partie avec schemeID = '0002' DOIT être composé de 9 chiffres.
+      </assert>
+    </rule>
+    
   </pattern>
   
   
@@ -1080,22 +1110,27 @@
       </assert>
     </rule>
   </pattern>
+  
+  <!-- V1.4.0 - Corrected to exclude GROUP and INFORMATION lines -->
   <pattern id="BR-FR-CO-05">
     <title>BR-FR-CO-05] — Référence obligatoire à une facture antérieure pour les avoirs (BT-3)</title>
     
     <rule context="cn:CreditNote">
+      <let name="invoiceID" value="cbc:ID"/>
       <let name="typeCode" value="cbc:CreditNoteTypeCode"/>
       <let name="headerReferences" value="cac:BillingReference/cac:InvoiceDocumentReference"/>
       <let name="headerRefCount" value="count($headerReferences[cbc:ID and cbc:IssueDate])"/>
-      <let name="lineReferences" value="cac:CreditNoteLine/cac:BillingReference/cac:InvoiceDocumentReference[cbc:ID and cbc:IssueDate]"/>
-      <let name="lineCount" value="count(cac:CreditNoteLine)"/>
-      
-      <assert test="not($typeCode = '261' or $typeCode = '381' or $typeCode = '396' or $typeCode = '502' or $typeCode = '503') or ($headerRefCount &gt; 0 or count($lineReferences) = $lineCount)"
-        flag="warning" id="BR-FR-CO-05_BT-3">
+      <let name="lineCount" value="count(cac:CreditNoteLine[not(cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID = $invoiceID) or (cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID]/cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'DETAIL')])"/>
+      <let name="lineRefCount" value="count(cac:CreditNoteLine[not(cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID = $invoiceID) or (cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID]/cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'DETAIL')][cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID != $invoiceID]/cac:InvoiceDocumentReference[cbc:ID and cbc:IssueDate]])"/>
+     
+      <assert test="not($typeCode = ('261', '381', '396', '502', '503')) or ($headerRefCount ge 1 or $lineRefCount = $lineCount)" flag="warning" id="BR-FR-CO-05_BT-3">
         [BR-FR-CO-05/BT-3] : Si le type de facture (BT-3) est un avoir (261, 381, 396, 502, 503), alors :
         - soit au moins une référence à une facture antérieure (BT-25) avec sa date (BT-26) doit être présente au niveau entête,
         - soit chaque ligne (BG-25) doit contenir une référence à une facture antérieure (EXT-FR-FE-136) avec sa date (EXT-FR-FE-138).
         Références entête trouvées : <value-of select="$headerRefCount"/>.
+        Nbline : <value-of select="$lineCount"/>
+        LineREF : <value-of select="$lineRefCount"/>
+        N° Facture : <value-of select="$invoiceID"/>
       </assert>
     </rule>
   
@@ -1107,7 +1142,7 @@
       <let name="typeCode" value="cbc:InvoiceTypeCode | cbc:CreditNoteTypeCode"/>
       <let name="billingContext" value="cbc:ProfileID"/> <!-- CYS4 Correction Xpath, was cac:PaymentTerms/cbc:Note -->
       <let name="issueDate" value="cbc:IssueDate"/>
-      <let name="dueDate" value="cbc:DueDate"/>
+      <let name="dueDate" value="cbc:DueDate | cac:PaymentMeans/cbc:PaymentDueDate"/> <!-- V1.4.0.04 fix04 Correction Xpath for UBL Credit Note) -->
       
       <assert test="not($dueDate and not($typeCode = '386' or $typeCode = '500' or $typeCode = '503' or $billingContext = 'B2' or $billingContext = 'S2' or $billingContext = 'M2') and $dueDate &lt; $issueDate)"
         flag="warning" id="BR-FR-CO-07_BT-9">
@@ -1131,7 +1166,7 @@
       </assert>
     </rule>
   </pattern>
-  <pattern id="BR-FR-CO-09"> <!-- CYS3 CORRECTION Xpath BT-113 et Ajouter number(.) pour comparer des montants et nombres -->
+  <pattern id="BR-FR-CO-09"> <!-- CYS3 CORRECTION Xpath BT-113 et Ajouter number(.) pour comparer des montants et nombres - fix04 remplacer number par xs:decimal -->
     <title>BR-FR-CO-09 — Contrôle des montants et de la date d’échéance pour les factures déjà payées (BT-23)</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
@@ -1139,21 +1174,15 @@
       <let name="paidAmount" value="cac:LegalMonetaryTotal/cbc:PrepaidAmount"/>
       <let name="grandTotal" value="cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount"/>
       <let name="payableAmount" value="cac:LegalMonetaryTotal/cbc:PayableAmount"/>
-      <let name="dueDate" value=" if (self::ubl:Invoice) 
-        then cbc:DueDate
-        else if (self::cn:CreditNote)
-        then cac:PaymentMeans/cbc:PaymentDueDate
-        else ()"/>  
-      <!--    <let name="dueDate" value="cbc:DueDate"/> replaced  V1.3.1 -->
+      <let name="dueDate" value="cbc:DueDate | cac:PaymentMeans/cbc:PaymentDueDate"/> <!-- V1.4.0 Correction Xpath for UBL Credit Note) -->
       
-      
-      <assert test="not($billingContext = 'B2' or $billingContext = 'S2' or $billingContext = 'M2') or (number($paidAmount) = number($grandTotal))"
+      <assert test="not($billingContext = 'B2' or $billingContext = 'S2' or $billingContext = 'M2') or (xs:decimal($paidAmount) = xs:decimal($grandTotal))"
         flag="warning" id="BR-FR-CO-09_BT-23-1">
         [BR-FR-CO-09/BT-23] : Si le cadre de facturation (BT-23) est B2, S2 ou M2 (facture déjà payée), alors le montant déjà payé (BT-113) doit être égal au montant total TTC (BT-112).
         Montant payé : <value-of select="$paidAmount"/>, Montant total : <value-of select="$grandTotal"/>.
       </assert>
       
-      <assert test="not($billingContext = 'B2' or $billingContext = 'S2' or $billingContext = 'M2') or (number($payableAmount) = 0)"
+      <assert test="not($billingContext = 'B2' or $billingContext = 'S2' or $billingContext = 'M2') or (xs:decimal($payableAmount) = 0)"
         flag="warning" id="BR-FR-CO-09_BT-23-2">
         [BR-FR-CO-09/BT-23] : Si le cadre de facturation (BT-23) est B2, S2 ou M2, alors le net à payer (BT-115) doit être égal à 0.
         Net à payer : <value-of select="$payableAmount"/>.
@@ -1284,7 +1313,7 @@
     <rule context="ubl:Invoice/cac:InvoiceLine/cac:Delivery/cac:DeliveryLocation | cn:CreditNote/cac:CreditNoteLine/cac:Delivery/cac:DeliveryLocation">
       
       <assert test="empty(cbc:ID[not(@schemeID)])" flag="warning" id="BR-FR-CO-10_EXT-FR-FE-146-1">
-        BR-FR-CO-10/EXT-FR-FE-146] : Si l’identifiant global du livré à à la ligne (EXT-FR-FE-146 ) est renseigné, alors son schéma (EXT-FR-FE-147) doit également être renseigné.
+        BR-FR-CO-10/EXT-FR-FE-146] : Si l’identifiant global du livré à à la ligne (EXT-FR-FE-146 ) est renseigné, alors son schéma (EXT-FR-FE-148) doit également être renseigné.
       </assert>
       
       <assert test="count(distinct-values(cbc:ID/@schemeID)) = count(cbc:ID/@schemeID)" flag="warning" id="BR-FR-CO-10_EXT-FR-FE-146-2">
@@ -1317,8 +1346,9 @@
     <title>BR-FR-CO-14 — Vérification de la note TXD pour les vendeurs membres d’un assujetti unique</title>
     
     <rule context="ubl:Invoice | cn:CreditNote">
+      <!-- V1.4.0 fix04 add '#' in join in order to manage notes without subject between #-->
       <let name="isAU" value="exists(cac:AccountingSupplierParty/cac:Party/cac:PartyIdentification/cbc:ID[@schemeID = '0231'])"/>
-      <let name="allNotes" value="string-join(./cbc:Note, '')[contains(., '#TXD#')]"/>
+      <let name="allNotes" value="string-join(./cbc:Note, '#')"/>
       <let name="afterTXD" value="substring-after($allNotes, '#TXD#')"/>
       <let name="ValeurTXD" value="if (contains($afterTXD, '#')) then substring-before($afterTXD, '#') else $afterTXD"/>   
       
@@ -1513,13 +1543,13 @@
     </rule>
     
   </pattern>
-  <pattern id="BR-FR-DEC-03">
+  <pattern id="BR-FR-DEC-03"> <!-- V1.4 - MàJ pour autoriser PU négatifs pour factures BD  -->
     <title>BR-FR-DEC-03 — Format des montants positifs (max 19 caractères, 6 décimales, séparateur « . »)</title>
     
     <!-- BT-146 -->
     <rule context="ubl:Invoice/cac:InvoiceLine | cn:CreditNote/cac:CreditNoteLine">
       <let name="amount" value="normalize-space(cac:Price/cbc:PriceAmount)"/>
-      <assert test="not($amount) or custom:is-valid-decimal-19-6-positive($amount)" flag="warning" id="BR-FR-DEC-03_BT-146">
+      <assert test="not($amount) or (custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote) and custom:is-valid-decimal-19-6($amount)) or (not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) and custom:is-valid-decimal-19-6-positive($amount))" flag="warning" id="BR-FR-DEC-03_BT-146">
         [BR-FR-DEC-03/BT-146] : Le montant « <value-of select="$amount"/> » est invalide. Il doit :
         - être un nombre strictement positif (sans signe « - »),
         - comporter au plus 6 décimales (séparateur « . »),
@@ -1531,7 +1561,7 @@
     <!-- BT-147 -->
     <rule context="ubl:Invoice/cac:InvoiceLine/cac:Price/cac:AllowanceCharge | cn:CreditNote/cac:CreditNoteLine/cac:Price/cac:AllowanceCharge">
       <let name="amount" value="normalize-space(cbc:Amount)"/>
-      <assert test="not($amount) or custom:is-valid-decimal-19-6-positive($amount)" flag="warning" id="BR-FR-DEC-03_BT-147">
+      <assert test="not($amount) or (custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote) and custom:is-valid-decimal-19-6($amount)) or (not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) and custom:is-valid-decimal-19-6-positive($amount))" flag="warning" id="BR-FR-DEC-03_BT-147">
         [BR-FR-DEC-03/BT-147] : Le montant « <value-of select="$amount"/> » est invalide. Il doit :
         - être un nombre strictement positif (sans signe « - »),
         - comporter au plus 6 décimales (séparateur « . »),
@@ -1543,7 +1573,7 @@
     <!-- BT-148 -->
     <rule context="ubl:Invoice/cac:InvoiceLine/cac:Price/cac:AllowanceCharge/cbc:BaseAmount | cn:CreditNote/cac:CreditNoteLine/cac:Price/cac:AllowanceCharge/cbc:BaseAmount">
       <let name="amount" value="normalize-space(.)"/>
-      <assert test="not($amount) or custom:is-valid-decimal-19-6-positive($amount)" flag="warning" id="BR-FR-DEC-03_BT-148">
+      <assert test="not($amount) or (custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote) and custom:is-valid-decimal-19-6($amount)) or (not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) and custom:is-valid-decimal-19-6-positive($amount))" flag="warning" id="BR-FR-DEC-03_BT-148">
         [BR-FR-DEC-03/BT-148] : Le montant « <value-of select="$amount"/> » est invalide. Il doit :
         - être un nombre strictement positif (sans signe « - »),
         - comporter au plus 6 décimales (séparateur « . »),
@@ -1592,31 +1622,30 @@
     </rule>
   </pattern>
 
-
-
   <pattern id="BR-FR-MV-01">
     
     <let name="invoiceID" value="(ubl:Invoice|/cn:CreditNote)/cbc:ID"/> 
     
-    <title>BR-FR-MV-01 — lorsque le cadre de facturation est S8, B8 ou M8, Vérification du sous-type de ligne  - BR-FR-MV-02 — Vérification de la présence d'une ligne GROUP sans parent </title>
+    <title>BR-FR-MV-01 — lorsque le cadre de facturation est S8, B8, M8 ou S9, B9, M9, Vérification du sous-type de ligne  - BR-FR-MV-02 — Vérification de la présence d'une ligne GROUP sans parent </title>
     
     <rule context="cac:InvoiceLine|cac:CreditNoteLine">     
      
       <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) or (exists(cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID]) and (normalize-space(cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID]/cac:InvoiceDocumentReference/cbc:DocumentStatusCode) != ''))"
         flag="fatal"
         id="BR-FR-MV-01_EXT-FR-FE-163">
-        [BR-FR-MV-01/EXT-FR-FE-163] : Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, chaque ligne (BG-25) doit contenir un sous-type de ligne EXT-FR-FE-163. Cadre de facturation "<value-of select='../cbc:ProfileID'/>", ligne "<value-of select='cbc:ID'/>". Numéro de facture : ligne "<value-of select='$invoiceID'/>", Présence Bloc BillingReference avec num Fact (true / false) : "<value-of select='exists(cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID])'/>". 
+        [BR-FR-MV-01/EXT-FR-FE-163] : Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, chaque ligne (BG-25) doit contenir un sous-type de ligne EXT-FR-FE-163. Cadre de facturation "<value-of select='../cbc:ProfileID'/>", ligne "<value-of select='cbc:ID'/>". Numéro de facture : ligne "<value-of select='$invoiceID'/>", Présence Bloc BillingReference avec num Fact (true / false) : "<value-of select='exists(cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID])'/>". 
         Veuillez vérifier que le sous-type est renseigné pour toutes les lignes.
       </assert>
     </rule>
   </pattern>
   
   <pattern id="BR-FR-MV-02">
+    
     <title>BR-FR-MV-02 — lorsque le cadre de facturation est S8, B8 ou M8, Vérification de la présence d'une ligne GROUP sans parent </title>
-      
+    
     <rule context="ubl:Invoice|/cn:CreditNote">
 
-      <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
+      <assert test="not(custom:isSpecialContractMV(/ubl:Invoice|/cn:CreditNote)) 
         or (count((cac:InvoiceLine|cac:CreditNoteLine)/cac:BillingReference[(cac:InvoiceDocumentReference/cbc:ID = $invoiceID) and (cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]) &gt;= 1)"
         flag="fatal"
           id="BR-FR-MV-02_EXT-FR-FE-163">
@@ -1625,9 +1654,41 @@
        </assert>
     </rule> 
   </pattern>
-   
+
+  <pattern id="BR-FR-BD-02">
+    <rule context="ubl:Invoice|/cn:CreditNote">
+      
+      <assert test="not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) 
+        or (count((cac:InvoiceLine|cac:CreditNoteLine)/cac:BillingReference[(cac:InvoiceDocumentReference/cbc:ID = $invoiceID) and (cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]) = 2)"
+        flag="fatal"
+        id="BR-FR-BD-02_EXT-FR-FE-163">
+        BR-FR-BD-02/EXT-FR-FE-163 : Lorsque le cadre de facturation (BT-23) est S9, B9 ou M9, la facture doit contenir exactement deux ligne (BG-25) avec le sous-type de ligne (ram:LineStatusReasonCode) égal à "GROUP" et sans identifiant de ligne parent (ram:ParentLineID).
+        Veuillez vérifier que cette ligne est présente.
+      </assert>
+      
+      <assert test="not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) or (count((cac:InvoiceLine|cac:CreditNoteLine)/cac:BillingReference[(cac:InvoiceDocumentReference/cbc:ID = $invoiceID) and (cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID) 
+        and ../cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID = ../../cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cbc:CompanyID]) = 1)"
+        flag="fatal"
+        id="BR-FR-BD-02_BT-30">
+        invoiceID : <value-of select="$invoiceID"/>
+        BR-FR-BD-02/BT-30 : Lorsque le cadre de facturation (BT-23) est S9, B9 ou M9, la facture doit contenir exactement deux ligne (BG-25) avec le sous-type de ligne (ram:LineStatusReasonCode) égal à "GROUP" et sans identifiant de ligne parent (ram:ParentLineID),
+        pour lesquelles l'une a pour ID legal Vendeur à la ligne (EXT-FR-FE-167) l'ID légal du VENDEUR (BT-30). Veuillez vérifier qu'il y a une ligne GROUP avec ID Vendeur de ligne = ID VENDEUR (BT-30).
+      </assert>
+      
+      <assert test="not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) or (count((cac:InvoiceLine|cac:CreditNoteLine)/cac:BillingReference[(cac:InvoiceDocumentReference/cbc:ID = $invoiceID) and (cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID) 
+        and ../cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID = ../../cac:AccountingCustomerParty/cac:Party/cac:PartyLegalEntity/cbc:CompanyID]) = 1)"
+        flag="fatal"
+        id="BR-FR-BD-02_BT-47">
+        invoiceID : <value-of select="$invoiceID"/>
+        BR-FR-BD-02/BT-47 : Lorsque le cadre de facturation (BT-23) est S9, B9 ou M9, la facture doit contenir exactement deux ligne (BG-25) avec le sous-type de ligne (ram:LineStatusReasonCode) égal à "GROUP" et sans identifiant de ligne parent (ram:ParentLineID),
+        pour lesquelles l'une a pour ID légale de Vendeur à la ligne (EXT-FR-FE-167) l'ID légal de l'ACHETEUR (BT-47). Veuillez vérifier qu'il y a une ligne GROUP avec ID Vendeur de ligne = ID ACHETEUR (BT-47).
+      </assert>
+    </rule> 
+  </pattern>
+
+
   <pattern id="BR-FR-MV-03">     <!-- CYS' Règles revues -->
-    <title>BR-FR-MV-03 — Vérification des données obligatoires pour les lignes GROUP sans parent lorsque le cadre de facturation est S8, B8 ou M8</title>
+    <title>BR-FR-MV-03 — Vérification des données obligatoires pour les lignes GROUP sans parent lorsque le cadre de facturation est S8, B8, M8 ou S9, B9, M9</title>
     
     <rule context="(ubl:Invoice/cac:InvoiceLine|cn:CreditNote/cac:CreditNoteLine)/cac:BillingReference[(cac:InvoiceDocumentReference/cbc:ID = $invoiceID) and (cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]">
       
@@ -1637,7 +1698,7 @@
         id="BR-FR-MV-03_EXT-FR-FE-164"> 
         [BR-FR-MV-03/EXT-FR-FE-164] : 
         Ligne : <value-of select='../cbc:ID'/> : Valeur actuelle : "<value-of select='../cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:RegistrationName'/>".
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8 et que la ligne est de type GROUP sans parent, le nom du vendeur (EXT-FR-FE-164) doit être renseigné. 
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9 et que la ligne est de type GROUP sans parent, le nom du vendeur (EXT-FR-FE-164) doit être renseigné. 
       </assert>
       
       <!-- EXT-FR-FE-167 : ID légal du vendeur -->
@@ -1646,7 +1707,7 @@
         id="BR-FR-MV-03_EXT-FR-FE-167"> 
         [BR-FR-MV-03/EXT-FR-FE-167] : 
         Ligne : <value-of select='../cbc:ID'/> : Valeur actuelle : "<value-of select='../cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID'/>".
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8 et que la ligne est de type GROUP sans parent, l'identifiant du vendeur (EXT-FR-FE-167) doit être renseigné.
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9 et que la ligne est de type GROUP sans parent, l'identifiant du vendeur (EXT-FR-FE-167) doit être renseigné.
       </assert>
       
       <!-- EXT-FR-FE-177 : Code pays du vendeur -->
@@ -1655,7 +1716,7 @@
         id="BR-FR-MV-03_EXT-FR-FE-177"> 
         [BR-FR-MV-03/EXT-FR-FE-177] : 
         Ligne : <value-of select='../cbc:ID'/> : Valeur actuelle : "<value-of select='..//cac:Item/cac:ManufacturerParty/cac:PostalAddress/cac:Country/cbc:IdentificationCode'/>'.
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8 et que la ligne est de type GROUP sans parent, le code pays du vendeur (EXT-FR-FE-177) doit être renseigné.
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9 et que la ligne est de type GROUP sans parent, le code pays du vendeur (EXT-FR-FE-177) doit être renseigné.
       </assert>
       
       <!-- EXT-FR-FE-181 : Montant total TVA en devise de facture et en devise de comptabilisation si existe -->
@@ -1696,7 +1757,7 @@
           and not(../cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AVV'] = 'M8' or ../cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AVV'] = 'S8' or ../cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AVV'] = 'B8'))"
           flag="fatal"
           id="BR-FR-MV-03_BT-128_AVV">
-          [BR-FR-MV-03/BT-128] : Pour une ligne GROUP sans parent, une valeur d'objet facturé (ram:IssuerAssignedID) avec identifiant de schéma (ram:ReferenceTypeCode) = AVV doit être présente et différente de M8/S8/B8 : Ligne : <value-of select='../cbc:ID'/>
+          [BR-FR-MV-03/BT-128] : Pour une ligne GROUP sans parent, une valeur d'objet facturé (ram:IssuerAssignedID) avec identifiant de schéma (ram:ReferenceTypeCode) = AVV doit être présente et différente de S8, B8, M8 ou S9, B9, M9 : Ligne : <value-of select='../cbc:ID'/>
         </assert>
       
     </rule>      
@@ -1713,52 +1774,52 @@
       <let name="numberline" value="count((../../cac:InvoiceLine| ../../cac:CreditNoteLine)[cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID  and cac:InvoiceDocumentReference/cbc:DocumentStatusCode != 'INFORMATION' and cac:BillingReferenceLine/cbc:ID = $grouplineID]]/cbc:LineExtensionAmount)"/>
       
       <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
-        or (abs(number(../cbc:LineExtensionAmount) - $sumsubline) &lt;= 0.01 * $numberline)"
+        or (abs(xs:decimal(../cbc:LineExtensionAmount) - $sumsubline) &lt;= 0.01 * $numberline)"
         flag="fatal"
         id="BR-FR-MV-05_EXT-FR-FE-BG-12">
         [BR-FR-MV-05/EXT-FR-FE-BG-12] : Num Fact : <value-of select='$invoiceID'/> - Ligne GROUP : <value-of select='$grouplineID'/>, Somme Sous lignes : <value-of select='$sumsubline'/>, Nbre sous-lignes: <value-of select='$numberline'/>. Valeur actuelle : "<value-of select='../cbc:LineExtensionAmount'/>".
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, le total HT (ram:LineTotalAmount) de la ligne GROUP doit être égal (tolérance ±0,01 * nombre de sous-lignes) à la somme des totaux HT des lignes enfants dont le ParentLineID correspond à l'identifiant de la ligne GROUP (ram:LineID).
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, le total HT (ram:LineTotalAmount) de la ligne GROUP doit être égal (tolérance ±0,01 * nombre de sous-lignes) à la somme des totaux HT des lignes enfants dont le ParentLineID correspond à l'identifiant de la ligne GROUP (ram:LineID).
       </assert>
     </rule>
   </pattern>
 
 
-  <pattern id="BR-FR-MV-06"> <!-- CYS4 revu -->
+  <pattern id="BR-FR-MV-06"> <!-- CYS4 revu Corrigé V1.4 Xpath Credit Note -->
     <title>BR-FR-MV-06 — Vérification de la cohérence de l'identifiant légal du vendeur entre une ligne et sa ligne parent</title>
     
     <rule context="ubl:Invoice/cac:InvoiceLine|cn:CreditNote/cac:CreditNoteLine">
       
       <let name="parentlineID" value="cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID]/cac:BillingReferenceLine/cbc:ID"/>
       <let name="legalID" value="normalize-space(cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID)"/>
-      <let name="legalIDParent" value="normalize-space((../cac:InvoiceLine| ../../cac:CreditNoteLine)[cbc:ID = $parentlineID]/cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID)"/>
+      <let name="legalIDParent" value="normalize-space((../cac:InvoiceLine| ../cac:CreditNoteLine)[cbc:ID = $parentlineID]/cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID)"/>
       
       <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
         or ($legalID != '' and (not($parentlineID) or $legalID = $legalIDParent))"
         flag="fatal"
         id="BR-FR-MV-06_EXT-FR-FE-167">
         [BR-FR-MV-06/EXT-FR-FE-167] : IDligne <value-of select='cbc:ID'/>, ID parent ligne <value-of select='$parentlineID'/>, legalID : <value-of select='$legalID'/>, ParentlegalID : <value-of select='$legalIDParent'/>.
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, chaque ligne (BG-25) doit contenir un identifiant légal de vendeur (ram:ID). Si la ligne a un identifiant de ligne parent (ram:ParentLineID), cet identifiant doit être identique à celui de la ligne parent.
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, chaque ligne (BG-25) doit contenir un identifiant légal de vendeur (ram:ID). Si la ligne a un identifiant de ligne parent (ram:ParentLineID), cet identifiant doit être identique à celui de la ligne parent.
       </assert>
     </rule>
   </pattern>
   
   
 
-  <pattern id="BR-FR-MV-07"> <!-- CYS4 revu -->
+  <pattern id="BR-FR-MV-07"> <!-- CYS4 revu Corrigé V1.4 Xpath Credit Note -->
     <title>BR-FR-MV-07 — Vérification de la cohérence du numéro de facture codifié AFL entre une ligne et sa ligne parent</title>
     
     <rule context="ubl:Invoice/cac:InvoiceLine|cn:CreditNote/cac:CreditNoteLine">
       
       <let name="parentlineID" value="cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID]/cac:BillingReferenceLine/cbc:ID"/>
       <let name="numfact" value="normalize-space(cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'])"/>
-      <let name="numfactparent" value="normalize-space((../cac:InvoiceLine| ../../cac:CreditNoteLine)[cbc:ID = $parentlineID]/cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'])"/>
+      <let name="numfactparent" value="normalize-space((../cac:InvoiceLine| ../cac:CreditNoteLine)[cbc:ID = $parentlineID]/cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'])"/>
       
       <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
         or ($numfact != '' and (not($parentlineID) or $numfact = $numfactparent))"
         flag="fatal"
         id="BR-FR-MV-07_BT-128">
         [BR-FR-MV-07/BT-128] : IDligne <value-of select='cbc:ID'/>, ID parent ligne <value-of select='$parentlineID'/>, numfact en ligne <value-of select='$numfact'/>, numfact ligne parent : <value-of select='$numfactparent'/>. 
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, chaque ligne (BG-25) doit contenir un numéro de facture codifié AFL (BT-128). Si la ligne a un identifiant de ligne parent (EXT-FR-FE-162), ce numéro doit être identique à celui de la ligne parent.
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, chaque ligne (BG-25) doit contenir un numéro de facture codifié AFL (BT-128). Si la ligne a un identifiant de ligne parent (EXT-FR-FE-162), ce numéro doit être identique à celui de la ligne parent.
       </assert>
     </rule>
   </pattern>
@@ -1776,7 +1837,7 @@
         or (normalize-space(cac:Item/cac:ClassifiedTaxCategory/cbc:TaxExemptionReason) != '' and $numfact != '' and starts-with(cac:Item/cac:ClassifiedTaxCategory/cbc:TaxExemptionReason, concat('#', $numfact, '#')))"
         flag="fatal"
         id="BR-FR-MV-08_BT-128">
-        [BR-FR-MV-08/BT-128] : IDligne <value-of select='cbc:ID'/>, Raison exemption : <value-of select='cac:Item/cac:ClassifiedTaxCategory/cbc:TaxExemptionReason'/> - Num fact ligne: <value-of select= '$numfact'/>. Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, chaque ligne (BG-25) doit contenir une raison d'exemption TVA en texte commençant par le numéro de sous-facture en ligne entre #.
+        [BR-FR-MV-08/BT-128] : IDligne <value-of select='cbc:ID'/>, Raison exemption : <value-of select='cac:Item/cac:ClassifiedTaxCategory/cbc:TaxExemptionReason'/> - Num fact ligne: <value-of select= '$numfact'/>. Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, chaque ligne (BG-25) doit contenir une raison d'exemption TVA en texte commençant par le numéro de sous-facture en ligne entre #.
       </assert>
     </rule>
   </pattern>  
@@ -1791,11 +1852,11 @@
       <let name="invcurrency" value="../../cbc:DocumentCurrencyCode"/>
       
       <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
-        or (abs(number(../cac:TaxTotal/cbc:TaxAmount[@currencyID = $invcurrency]) - $sumvat) &lt;= 0.01)"
+        or (abs(xs:decimal(../cac:TaxTotal/cbc:TaxAmount[@currencyID = $invcurrency]) - $sumvat) &lt;= 0.01)"
         flag="fatal"
         id="BR-FR-MV-09_EXT-FR-FE-181">
         [BR-FR-MV-09/EXT-FR-FE-181] : Id Line Group : <value-of select='../cbc:ID'/>, Numfact: <value-of select='$numfact'/>, Total TVA : <value-of select='../cac:TaxTotal/cbc:TaxAmount[@currencyID = $invcurrency]'/>, Somme TVA : <value-of select='$sumvat'/>.
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, le montant total TVA de la ligne GROUP (EXT-FR-FE-181) doit être égal  à la somme des montants de TVA des ventilations TVA (BT-117) dont la raison d'exemption (ram:ExemptionReason) commence par le numéro de facture en ligne (BT-128 avec ReferenceTypeCode = AFL) entre #.
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, le montant total TVA de la ligne GROUP (EXT-FR-FE-181) doit être égal  à la somme des montants de TVA des ventilations TVA (BT-117) dont la raison d'exemption (ram:ExemptionReason) commence par le numéro de facture en ligne (BT-128 avec ReferenceTypeCode = AFL) entre #.
       </assert>
     </rule>
   </pattern>
@@ -1808,21 +1869,22 @@
       
       <let name="invcurrency" value="../../cbc:DocumentCurrencyCode"/>
       <let name="parentlineID" value="../cbc:ID"/>
-      <let name="nbligne" value="count((../../cac:InvoiceLine| ../../cac:CreditNoteLine)/cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'DETAIL' and cac:BillingReferenceLine/cbc:ID = $parentlineID])"/>
+      <let name="nbligne" value="count((../../cac:InvoiceLine| ../../cac:CreditNoteLine)/cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][cac:InvoiceDocumentReference/cbc:DocumentStatusCode = ('DETAIL', 'GROUP') and cac:BillingReferenceLine/cbc:ID = $parentlineID])"/>
       
+      <!-- V1.4.0.04 fix04 : correction pour intégrer les lignes GROUP dans le calcul du nb de lignes -->     
       <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
         or not(../cbc:TaxInclusiveLineExtensionAmount) 
         or (normalize-space(../cbc:TaxInclusiveLineExtensionAmount) != '' 
-        and abs(number(../cbc:TaxInclusiveLineExtensionAmount) 
-        - number(../cbc:LineExtensionAmount) 
-        - number(../cac:TaxTotal/cbc:TaxAmount[@currencyID = $invcurrency])) &lt;= 0.01 * $nbligne)"      
+        and abs(xs:decimal(../cbc:TaxInclusiveLineExtensionAmount) 
+        - xs:decimal(../cbc:LineExtensionAmount) 
+        - xs:decimal(../cac:TaxTotal/cbc:TaxAmount[@currencyID = $invcurrency])) &lt;= 0.01 * $nbligne)"      
         flag="fatal"
         id="BR-FR-MV-10_EXT-FR-FE-184">
         [BR-FR-MV-10/EXT-FR-FE-184] : Id Line Group : <value-of select='../cbc:ID'/>, nb sous-ligne : <value-of select='$nbligne'/>, 
         TTC : <value-of select='../cbc:TaxInclusiveLineExtensionAmount'/>,
         TVA : <value-of select='../cac:TaxTotal/cbc:TaxAmount[@currencyID = $invcurrency]'/>,
         HT : <value-of select='../cbc:LineExtensionAmount'/>
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, si le montant total avec TVA (EXT-FR-FE-184) est présent pour une ligne GROUP sans parent, alors la différence entre ce montant et la somme du montant HT (BT-131) et du montant TVA (EXT-FR-FE-181) doit être inférieure ou égale à 0,01 × le nombre de sous-lignes DETAIL. Valeur actuelle : "<value-of select='.'/>'.
+        Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, si le montant total avec TVA (EXT-FR-FE-184) est présent pour une ligne GROUP sans parent, alors la différence entre ce montant et la somme du montant HT (BT-131) et du montant TVA (EXT-FR-FE-181) doit être inférieure ou égale à 0,01 × le nombre de sous-lignes DETAIL ou GROUP. Valeur actuelle : "<value-of select='.'/>'.
       </assert>
     </rule>
   </pattern>
@@ -1830,21 +1892,25 @@
   
   <pattern id="BR-FR-MV-11">
     <title>BR-FR-MV-11 — Vérification de la cohérence entre l'identifiant de facture à la ligne (AFL) et le numéro de facture (BT-1) pour le Vendeur principal</title>
-    
-    <rule context="(ubl:Invoice/cac:InvoiceLine|cn:CreditNote/cac:CreditNoteLine)[normalize-space(cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID) = normalize-space(../cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cbc:CompanyID)]/cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][(cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]">
+
+    <let name="sellerID" value="(ubl:Invoice | cn:CreditNote)/cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cbc:CompanyID"/>    
+    <let name="nbSubinvoiceSeller" value="count((ubl:Invoice/cac:InvoiceLine|cn:CreditNote/cac:CreditNoteLine)[normalize-space(cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID) = $sellerID and cac:BillingReference[cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP' and not(cac:BillingReferenceLine/cbc:ID)]/cac:InvoiceDocumentReference/cbc:ID = $invoiceID][cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'] = $invoiceID])"/>    
+
+    <rule context="(ubl:Invoice/cac:InvoiceLine|cn:CreditNote/cac:CreditNoteLine)[normalize-space(cac:Item/cac:ManufacturerParty/cac:PartyLegalEntity/cbc:CompanyID) = $sellerID]/cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][(cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]">
       
-      <let name="lineinvID" value="normalize-space(../cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'])"/>     
+      <let name="numFactLine" value="normalize-space(../cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'])"/>    
       
-      <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) or $lineinvID = $invoiceID"
+      <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) or ($nbSubinvoiceSeller = 1) or ($nbSubinvoiceSeller = 0 and $numFactLine = $invoiceID) or ($nbSubinvoiceSeller > 1 and $numFactLine != $invoiceID)"
         flag="fatal"
         id="BR-FR-MV-11_BT-128">
-        [BR-FR-MV-11/BT-128] : ID Seller : <value-of select='normalize-space(../cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cbc:CompanyID)'/>, NB ligne GROUP seller : <value-of select='../cbc:ID'/>
-        Numero de facture (BT-1) : <value-of select='$invoiceID'/>, num fact en ligne <value-of select='$lineinvID'/>. 
-        Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8 et que le vendeur principal (BG-4) dispose d'un groupe de lignes, l'identifiant de facture à la ligne (ram:IssuerAssignedID avec ReferenceTypeCode = AFL) doit être identique au numéro de facture (ram:ID dans ExchangedDocument).
+        [BR-FR-MV-11/BT-128]-ID Seller : <value-of select='$sellerID'/>, NB ligne GROUP seller : <value-of select='../cbc:ID'/>
+        Numero de facture (BT-1) : <value-of select='$invoiceID'/>, Nb de Ligne GROUP avec Num fact : <value-of select='$nbSubinvoiceSeller'/>, NumFact de ligne : <value-of select='$numFactLine'/>. 
+        [BR-FR-MV-11/BT-128]Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, si le Vendeur principal identifié dans le bloc Vendeur (BG-4) de la facture au travers de son identifiant légal (BT-30) dispose d'un groupe de lignes de facturation, alors il doit exister au moins une ligne (BG-25) avec sous-type de ligne (EXT-FR-FE-163) = "GROUP" et sans identifiant de ligne Parent (EXT-FR-FE-162), pour laquelle le numéro de facture à la ligne (Valeur de BT-128 avec BT-128-1 = AFL) est égal au numéro de facture (BT-1).
       </assert>
+      
     </rule>
   </pattern>
- 
+  
  
   <pattern id="BR-FR-MV-12">
     <title>BR-FR-MV-12 — Vérification de l'unicité des numéros de facture AFL pour les lignes GROUP sans parent</title>
@@ -1854,7 +1920,7 @@
         or not((cac:InvoiceLine|cac:CreditNoteLine)[cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][(cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]]/cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL'][. = preceding::cac:DocumentReference[cbc:DocumentTypeCode = '130']/cbc:ID[@schemeID = 'AFL']])" 
         flag="fatal"
         id="BR-FR-MV-12_BT-128">
-        [BR-FR-MV-12/BT-128] : Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, les numéros de facture à la ligne (ram:IssuerAssignedID avec ReferenceTypeCode = AFL) pour les lignes GROUP sans parent doivent être uniques. Veuillez vérifier que chaque numéro est distinct.
+        [BR-FR-MV-12/BT-128] : Lorsque le cadre de facturation (BT-23) est S8, B8, M8 ou S9, B9, M9, les numéros de facture à la ligne (ram:IssuerAssignedID avec ReferenceTypeCode = AFL) pour les lignes GROUP sans parent doivent être uniques. Veuillez vérifier que chaque numéro est distinct.
       </assert>
     </rule>
   </pattern>
@@ -1864,13 +1930,67 @@
     <title>BR-FR-MV-13 — Vérification que le code type de facture (BT-3) n'est pas un type auto-facturé interdit</title>
     
     <rule context="ubl:Invoice/cbc:InvoiceTypeCode|/cn:CreditNote/cbc:CreditNoteTypeCode">
-      <assert test="not(custom:isSpecialContract(/ubl:Invoice|/cn:CreditNote)) 
+      <assert test="not(custom:isSpecialContractMV(/ubl:Invoice|/cn:CreditNote)) 
         or (normalize-space(.) != '' 
-        and not(. = '389' or . = '261' or . = '501' or . = '500' or . = '502' or . = '471' or . = '473'))"
+        and not(normalize-space(.) = ('389','261','501','500','502','471','473')))"
         flag="fatal"
         id="BR-FR-MV-13_BT-3">
         [BR-FR-MV-13/BT-3] : Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, le code type de facture (ram:TypeCode) ne doit pas être l'un des types auto-facturés suivants : 389, 261, 501, 500, 502, 471, 473. Valeur actuelle : "<value-of select='.'/>'.
       </assert>
+    </rule>
+  </pattern>
+  
+  <pattern id="BR-FR-BD-13">
+    <title>BR-FR-BD-13 — Vérification que le code type de facture (BT-3) n'est pas un type auto-facturé interdit</title>
+    
+    <rule context="ubl:Invoice/cbc:InvoiceTypeCode|/cn:CreditNote/cbc:CreditNoteTypeCode">
+      <assert test="not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) 
+        or (normalize-space(.) != '' 
+        and (normalize-space(.) = ('389','261','501','500','502','471','473')))"
+        flag="fatal"
+        id="BR-FR-MV-BD_BT-3">
+        [BR-FR-BD-13/BT-3] : Lorsque le cadre de facturation (BT-23) est S9, B9 ou M9, le code type de facture (ram:TypeCode) DOIT être l'un des types auto-facturés suivants : 389, 261, 501, 500, 502, 471, 473. Valeur actuelle : "<value-of select='.'/>'.
+      </assert>
+    </rule>
+  </pattern>
+ 
+ 
+  <pattern id="BR-FR-MV-14">
+    <title>BR-FR-MV-14 — Facture antérieure pour une facture rectificative ou un Avoir Multi-Vendeur </title>
+    
+    <rule context="(ubl:Invoice | cn:CreditNote)[(cbc:InvoiceTypeCode | cbc:CreditNoteTypeCode) = ('384','472','381','396','503')]/(cac:InvoiceLine | cac:CreditNoteLine)/cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][(cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]">
+      <assert test="not(custom:isSpecialContractMV(/ubl:Invoice|/cn:CreditNote)) or exists(../cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID != $invoiceID]/cac:InvoiceDocumentReference/cbc:ID)"
+        flag="fatal"
+        id="BR-FR-MV-14-EXT-FR-FE-136">
+        BR-FR-MV-14-EXT-FR-FE-136 : Num Facture antérieure manquant ligne <value-of select='../cbc:ID'/> : Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, et pour les factures rectificatives et avoirs chaque ligne (BG-25) avec un sous-type de ligne (EXT-FR-FE-163) égal à "GROUP" et sans identifiant de ligne Parent (EXT-FR-FE-162) doit comprendre un identifiant de facture antérieure à la ligne (EXT-FR-FE-136) ainsi que sa date (EXT-FR-FE-138).
+      </assert>
+      
+      <assert test="not(custom:isSpecialContractMV(/ubl:Invoice|/cn:CreditNote)) or exists(../cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID != $invoiceID]/cac:InvoiceDocumentReference/cbc:IssueDate)"
+        flag="fatal"
+        id="BR-FR-MV-14-EXT-FR-FE-138">
+        BR-FR-MV-14-EXT-FR-FE-138 : Date Facture antérieure manquant ligne <value-of select='../cbc:ID'/> : Lorsque le cadre de facturation (BT-23) est S8, B8 ou M8, et pour les factures rectificatives et avoirs chaque ligne (BG-25) avec un sous-type de ligne (EXT-FR-FE-163) égal à "GROUP" et sans identifiant de ligne Parent (EXT-FR-FE-162) doit comprendre un identifiant de facture antérieure à la ligne (EXT-FR-FE-136) ainsi que sa date (EXT-FR-FE-138).
+      </assert>
+      
+    </rule>
+  </pattern>
+ 
+ 
+  <pattern id="BR-FR-BD-14">
+    <title>BR-FR-BD-14 — Facture antérieure pour une facture rectificative ou un Avoir Multi-Vendeur </title>
+ 
+    <rule context="(ubl:Invoice | cn:CreditNote)[(cbc:InvoiceTypeCode | cbc:CreditNoteTypeCode) = ('261','471','473','502')]/(cac:InvoiceLine | cac:CreditNoteLine)/cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID = $invoiceID][(cac:InvoiceDocumentReference/cbc:DocumentStatusCode = 'GROUP') and not(cac:BillingReferenceLine/cbc:ID)]">
+      <assert test="not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) or exists(../cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID != $invoiceID]/cac:InvoiceDocumentReference/cbc:ID)"
+        flag="fatal"
+        id="BR-FR-BD-14-EXT-FR-FE-136">
+         BR-FR-BD-14-EXT-FR-FE-136 : Num Facture antérieure manquant ligne <value-of select='../cbc:ID'/> : Lorsque le cadre de facturation (BT-23) est S9, B9 ou M9, et pour les factures rectificatives et avoirs chaque ligne (BG-25) avec un sous-type de ligne (EXT-FR-FE-163) égal à "GROUP" et sans identifiant de ligne Parent (EXT-FR-FE-162) doit comprendre un identifiant de facture antérieure à la ligne (EXT-FR-FE-136) ainsi que sa date (EXT-FR-FE-138).
+      </assert>
+      
+      <assert test="not(custom:isSpecialContractBD(/ubl:Invoice|/cn:CreditNote)) or exists(../cac:BillingReference[cac:InvoiceDocumentReference/cbc:ID != $invoiceID]/cac:InvoiceDocumentReference/cbc:IssueDate)"
+        flag="fatal"
+        id="BR-FR-BD-14-EXT-FR-FE-138">       
+        BR-FR-BD-14-EXT-FR-FE-138 : Date Facture antérieure manquant ligne <value-of select='../cbc:ID'/> : Lorsque le cadre de facturation (BT-23) est S9, B9 ou M9, et pour les factures rectificatives et avoirs chaque ligne (BG-25) avec un sous-type de ligne (EXT-FR-FE-163) égal à "GROUP" et sans identifiant de ligne Parent (EXT-FR-FE-162) doit comprendre un identifiant de facture antérieure à la ligne (EXT-FR-FE-136) ainsi que sa date (EXT-FR-FE-138).
+      </assert>
+      
     </rule>
   </pattern>
   

@@ -1,0 +1,13 @@
+Corpus FNFE France_RFE
+https://github.com/fnfempe/France_RFE
+
+tag:    v1.4.0.04
+commit: 97ba0f3d4ef2abed5780e9490d5c3a2be832ab1d
+date:   2026-09-05
+
+Copied from FNFE_RFE_INVOICE/<profile>/schematron/. The Flux2 and Factur-X
+schematrons are replicated under every profile upstream; the copies are
+identical, so one of each is kept here.
+
+Reference XSLTs are not vendored: run scripts/fetch_rfe_corpus.sh to get them.
+minimal.sch is a hand-written unit fixture, not part of this corpus.

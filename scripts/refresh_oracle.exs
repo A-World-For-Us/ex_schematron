@@ -34,7 +34,7 @@ svrl_failed_keys = fn svrl_path, authored_ids ->
       node.kind == :element,
       node.name == {svrl_ns, "failed-assert"} or node.name == {svrl_ns, "successful-report"} do
     attrs = Map.new(Xml.attributes(doc, node.id), fn attr -> {elem(attr.name, 1), attr.value} end)
-    ExSchematron.OracleSuite.verdict_key(attrs["id"], Map.fetch!(attrs, "test"), authored_ids)
+    ExSchematron.OracleSuite.verdict_key(attrs["flag"], attrs["id"], Map.fetch!(attrs, "test"), authored_ids)
   end
 end
 
