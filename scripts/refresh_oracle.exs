@@ -1,8 +1,9 @@
 # Regenerates the frozen Saxon verdict manifests for every oracle pair.
-# Requires Java, the Saxon jars in tools/, and the FNFE corpus. Runs in the
-# test environment, where the oracle support modules are compiled:
+# Requires Java, the Saxon jars in tools/, and the FNFE corpus fetched by
+# scripts/fetch_rfe_corpus.sh. Runs in the test environment, where the oracle
+# support modules are compiled:
 #
-#   RFE_SPECS=.../FNFE_SCHEMATRONS_FR_CTC_V1.3.1_2026_04_30 MIX_ENV=test mix run scripts/refresh_oracle.exs [pair_key ...]
+#   MIX_ENV=test mix run scripts/refresh_oracle.exs [pair_key ...]
 #
 # Also diffs our compiled modules against the fresh verdicts and exits non-zero
 # on any divergence, so a refresh doubles as a full differential run.
@@ -11,7 +12,9 @@ alias ExSchematron.FrozenCorpus
 alias ExSchematron.OracleSuite
 alias ExSchematron.Xml
 
-corpus = System.get_env("RFE_SPECS") || raise "set RFE_SPECS to the FNFE schematron corpus directory"
+corpus = System.get_env("RFE_SPECS") || "tools/rfe/FNFE_RFE_INVOICE"
+
+File.dir?(corpus) || raise "#{corpus} is missing; run scripts/fetch_rfe_corpus.sh or set RFE_SPECS"
 
 classpath =
   ["Saxon-HE-12.10.jar", "xmlresolver-5.2.2.jar", "xmlresolver-5.2.2-data.jar"]
