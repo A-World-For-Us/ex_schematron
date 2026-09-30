@@ -35,3 +35,5 @@ jobs:
         env:
           MIX_ENV: test
       - run: mix test
+      - run: mix test
+        working-directory: xpath

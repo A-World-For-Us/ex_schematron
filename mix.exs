@@ -21,8 +21,10 @@ defmodule ExSchematron.MixProject do
     ["test.conformance": ["test --only conformance"]]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_env), do: ["lib"]
+  # xpath/ compiles into this app instead of being a path dependency: when ex_schematron is itself
+  # a git dependency, Mix recompiles it after every `mix deps.get` because of the path dependency.
+  defp elixirc_paths(:test), do: ["lib", "xpath/lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib", "xpath/lib"]
 
   def application do
     [
@@ -32,7 +34,6 @@ defmodule ExSchematron.MixProject do
 
   defp deps do
     [
-      {:ex_schematron_xpath, path: "xpath"},
       # Generated validators embed Decimal literals directly; the conformance
       # suite drives Saxy itself to write testcase fixtures.
       {:decimal, "~> 2.0 or ~> 3.0"},
