@@ -3,7 +3,7 @@ defmodule ExSchematron.SchTest do
 
   alias ExSchematron.Sch
 
-  @pilot Path.join(__DIR__, "../fixtures/schematron/flux2/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch")
+  @pilot Path.join(__DIR__, "../fixtures/schematron/flux2/BR-FR-Flux2-Schematron-CII.sch")
 
   @minimal """
   <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
@@ -78,13 +78,13 @@ defmodule ExSchematron.SchTest do
     schema = Sch.parse_file!(@pilot)
 
     assert map_size(schema.namespaces) == 5
-    assert length(schema.functions) == 16
-    assert length(schema.patterns) == 53
+    assert length(schema.functions) == 19
+    assert length(schema.patterns) == 58
 
     rules = Enum.flat_map(schema.patterns, & &1.rules)
     checks = Enum.flat_map(rules, & &1.checks)
-    assert length(rules) == 137
-    assert length(checks) == 164
+    assert length(rules) == 140
+    assert length(checks) == 171
     assert Enum.all?(checks, &(&1.type == :assert))
 
     date_function = Enum.find(schema.functions, &(&1.name == {"custom", "is-valid-date-format"}))

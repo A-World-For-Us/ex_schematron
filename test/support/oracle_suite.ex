@@ -8,75 +8,117 @@ defmodule ExSchematron.OracleSuite do
 
   @fixtures Path.join(File.cwd!(), "test/fixtures")
 
-  @uc1_cii "UC1_F202500003_00-INV_20250701_CII_EN16931.xml"
-  @uc10_cii "UC10_F202600004_MULTI-VENDEUR_CII_Commentee_EXTENDED.xml"
-  @uc1_ubl "UC1_F202500003_00-INV_20250701_UBL_EN16931.xml"
-
   @pairs [
     %{
       key: :flux2_cii,
-      sch: "flux2/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.sch",
-      xsl: "2.BR-FR-CTC-Flux2-Schematron_UBL_ET_CII_FX_V1.3.1/_XSLT/20260430_BR-FR-Flux2-Schematron-CII_V1.3.1.xsl",
-      invoices: [@uc1_cii, @uc10_cii]
+      sch: "flux2/BR-FR-Flux2-Schematron-CII.sch",
+      xsl: "CII/EN16931/2xslt/BR-FR-Flux2-Schematron-CII.xslt",
+      profiles: [:cii_en16931, :cii_extended]
+    },
+    %{
+      key: :flux2_cii_warning,
+      sch: "flux2/BR-FR-Flux2-Schematron-CII_WARNING.sch",
+      xsl: "CII/EN16931/2xslt/BR-FR-Flux2-Schematron-CII_WARNING.xslt",
+      profiles: [:cii_en16931, :cii_extended]
     },
     %{
       key: :flux2_ubl,
-      sch: "flux2/20260430_BR-FR-Flux2-Schematron-UBL_V1.3.1.sch",
-      xsl: "2.BR-FR-CTC-Flux2-Schematron_UBL_ET_CII_FX_V1.3.1/_XSLT/20260430_BR-FR-Flux2-Schematron-UBL_V1.3.1.xsl",
-      invoices: [@uc1_ubl]
+      sch: "flux2/BR-FR-Flux2-Schematron-UBL.sch",
+      xsl: "UBL/EN16931/2xslt/BR-FR-Flux2-Schematron-UBL.xslt",
+      profiles: [:ubl_en16931, :ubl_extended]
+    },
+    %{
+      key: :flux2_ubl_warning,
+      sch: "flux2/BR-FR-Flux2-Schematron-UBL_WARNING.sch",
+      xsl: "UBL/EN16931/2xslt/BR-FR-Flux2-Schematron-UBL_WARNING.xslt",
+      profiles: [:ubl_en16931, :ubl_extended]
     },
     %{
       key: :en16931_cii,
       sch: "en16931/EN16931-CII-validation-preprocessed.sch",
-      xsl: "1a.EN16931_Schematrons_V1.3.15_CII_ET_UBL/_XSLT/EN16931-CII-validation.xslt",
-      invoices: [@uc1_cii, @uc10_cii]
+      xsl: "CII/EN16931/2xslt/EN16931-CII-validation.xslt",
+      profiles: [:cii_en16931]
     },
     %{
       key: :en16931_ubl,
       sch: "en16931/EN16931-UBL-validation-preprocessed.sch",
-      xsl: "1a.EN16931_Schematrons_V1.3.15_CII_ET_UBL/_XSLT/EN16931-UBL-validation.xslt",
-      invoices: [@uc1_ubl]
+      xsl: "UBL/EN16931/2xslt/EN16931-UBL-validation.xslt",
+      profiles: [:ubl_en16931]
     },
     %{
       key: :extended_ctc_cii,
-      sch: "extended_ctc_fr/20260430_EXTENDED-CTC-FR-CII-V1.3.1.sch",
-      xsl: "1b.EXTENDED-CTC-FR_Schematrons_V1.3.1_CII_ET_UBL/_XSLT/20260430_EXTENDED-CTC-FR-CII-V1.3.1.xsl",
-      invoices: [@uc1_cii, @uc10_cii]
+      sch: "extended_ctc_fr/EXTENDED-CTC-FR-CII.sch",
+      xsl: "CII/EXTENDED-CTC-FR/2xslt/EXTENDED-CTC-FR-CII.xslt",
+      profiles: [:cii_extended]
     },
     %{
       key: :extended_ctc_ubl,
-      sch: "extended_ctc_fr/20260430_EXTENDED-CTC-FR-UBL-V1.3.1.sch",
-      xsl: "1b.EXTENDED-CTC-FR_Schematrons_V1.3.1_CII_ET_UBL/_XSLT/20260430_EXTENDED-CTC-FR-UBL-V1.3.1.xsl",
-      invoices: [@uc1_ubl]
+      sch: "extended_ctc_fr/EXTENDED-CTC-FR-UBL.sch",
+      xsl: "UBL/EXTENDED-CTC-FR/2xslt/EXTENDED-CTC-FR-UBL.xslt",
+      profiles: [:ubl_extended]
     },
     %{
       key: :fx_basicwl,
-      sch: "facturx/Factur-X_1.08_BASICWL.sch",
-      xsl: "1c.Factur-X_XSD_et_Schematrons_V1.08/1. Factur-X_1.08_BASICWL/_XSLT_BASICWL/FACTUR-X_BASIC-WL.xslt",
-      invoices: [@uc1_cii]
+      sch: "facturx/FACTUR-X_BASIC-WL.sch",
+      xsl: "Factur-X/BASICWL/2xslt/FACTUR-X_BASIC-WL.xslt",
+      profiles: [:fx_basicwl]
     },
     %{
       key: :fx_en16931,
-      sch: "facturx/Factur-X_1.08_EN16931.sch",
-      xsl: "1c.Factur-X_XSD_et_Schematrons_V1.08/3. Factur-X_1.08_EN16931/_XSLT_EN16931/FACTUR-X_EN16931.xslt",
-      invoices: [@uc1_cii, @uc10_cii]
+      sch: "facturx/FACTUR-X_EN16931.sch",
+      xsl: "Factur-X/EN16931/2xslt/FACTUR-X_EN16931.xslt",
+      profiles: [:cii_en16931]
     },
     %{
       key: :fx_extended,
-      sch: "facturx/Factur-X_1.08_EXTENDED.sch",
-      xsl: "1c.Factur-X_XSD_et_Schematrons_V1.08/4. Factur-X_1.08_EXTENDED/_XSLT_EXTENDED/FACTUR-X_EXTENDED.xslt",
-      invoices: [@uc1_cii, @uc10_cii]
+      sch: "facturx/FACTUR-X_EXTENDED.sch",
+      xsl: "Factur-X/EXTENDED/2xslt/FACTUR-X_EXTENDED.xslt",
+      profiles: [:fx_extended]
     },
     %{
-      key: :fx_multiseller,
-      sch: "facturx/20260430_Factur-X_1.08_EXTENDED_Multi_Seller_Beta-V1.08.1.sch",
-      xsl:
-        "1c.Factur-X_XSD_et_Schematrons_V1.08/4b. Factur-X_1.08_EXTENDED_MULTI-SELLER-BETA-1.08.1/_XSLT_EXTENDED/20260430_Factur-X_1.08_EXTENDED_Multi_Seller_Beta-V1.08.1.xsl",
-      invoices: [@uc10_cii]
+      key: :cdar,
+      sch: "cdar/BR-FR-CDV-Schematron-CDAR.sch",
+      xsl: "CDAR/2xslt/BR-FR-CDV-Schematron-CDAR.xslt",
+      profiles: [:cdar]
+    },
+    %{
+      key: :cdar_warning,
+      sch: "cdar/BR-FR-CDV-Schematron-CDAR_WARNING.sch",
+      xsl: "CDAR/2xslt/BR-FR-CDV-Schematron-CDAR_WARNING.xslt",
+      profiles: [:cdar]
     }
   ]
 
-  def pairs, do: @pairs
+  @compile_only [%{key: :flux10, sch: "flux10/Flux10.sch"}]
+
+  @doc """
+  The oracle pairs, each carrying the invoice fixtures of its profiles. A file
+  added to or removed from a profile directory drifts against the frozen
+  manifest, which is how the corpus stays in step with what is replayed.
+  """
+  def pairs do
+    Enum.map(@pairs, fn pair ->
+      pair
+      |> Map.delete(:profiles)
+      |> Map.put(:invoices, Enum.flat_map(pair.profiles, &profile_invoices/1))
+    end)
+  end
+
+  @doc """
+  Schematrons compiled but not replayed against Saxon: the FNFE corpus ships no
+  example document for them, so there is nothing to mutate.
+  """
+  def compile_only, do: @compile_only
+
+  defp profile_invoices(profile) do
+    root = Path.join(@fixtures, "invoices")
+
+    [root, Atom.to_string(profile), "*.xml"]
+    |> Path.join()
+    |> Path.wildcard()
+    |> Enum.map(&Path.relative_to(&1, root))
+    |> Enum.sort()
+  end
 
   def sch_path(pair), do: Path.join([@fixtures, "schematron", pair.sch])
   def validator(pair), do: Module.concat(ExSchematron.OracleValidators, Macro.camelize(Atom.to_string(pair.key)))
@@ -116,7 +158,7 @@ defmodule ExSchematron.OracleSuite do
 
     keys =
       for violation <- violations, violation.type != :error do
-        verdict_key(violation.rule, violation.test, authored_ids)
+        verdict_key(violation.flag, violation.rule, violation.test, authored_ids)
       end
 
     case errors do
@@ -132,33 +174,41 @@ defmodule ExSchematron.OracleSuite do
       Frozen Saxon verdicts of the #{pair.key} oracle pair: one entry per mutant,
       the sorted comparison keys of its failed asserts and successful reports.
       Replayed by `test/ex_schematron/oracle_test.exs`; regenerate with
-      `RFE_SPECS=... MIX_ENV=test mix run scripts/refresh_oracle.exs #{pair.key}`.
+      `MIX_ENV=test mix run scripts/refresh_oracle.exs #{pair.key}`.
       """
     )
   end
 
   @doc """
-  Comparison key of one verdict. Reference XSLTs may synthesize ids absent from
-  the schematron source (Factur-X); those cannot be reproduced, so a verdict is
-  keyed by its authored id when the schematron has one, by a digest of its test
-  expression otherwise -- both sides can compute that.
-  """
-  def verdict_key(id, test, authored_ids) do
-    if id != nil and MapSet.member?(authored_ids, id) do
-      id
-    else
-      # Reference XSLTs may diverge textually from the schematron source: some
-      # rename the code-list file they were compiled with, and XSLT 1.0 curly
-      # braces (attribute value templates) swallow regex quantifier braces in
-      # the SVRL @test. Neither is part of the check's identity.
-      normalized =
-        test
-        |> String.replace(~r/document\('[^']*'\)/, "document('#')")
-        |> String.replace(["{", "}"], "")
-        |> String.split(~r/\s+/u, trim: true)
-        |> Enum.join(" ")
+  Comparison key of one verdict, `"<flag>:<identity>"`. The flag is part of the
+  key because the corpus ships WARNING variants that differ from their FATAL
+  twin by nothing else; without it their manifests would be identical and the
+  variants would assert nothing.
 
-      "test:" <> (:md5 |> :crypto.hash(normalized) |> Base.encode16(case: :lower) |> binary_part(0, 12))
-    end
+  Reference XSLTs may synthesize ids absent from the schematron source
+  (Factur-X); those cannot be reproduced, so the identity is the authored id
+  when the schematron has one, and a digest of the test expression otherwise --
+  both sides can compute that.
+  """
+  def verdict_key(flag, id, test, authored_ids) do
+    identity =
+      if id != nil and MapSet.member?(authored_ids, id) do
+        id
+      else
+        # Reference XSLTs may diverge textually from the schematron source: some
+        # rename the code-list file they were compiled with, and XSLT 1.0 curly
+        # braces (attribute value templates) swallow regex quantifier braces in
+        # the SVRL @test. Neither is part of the check's identity.
+        normalized =
+          test
+          |> String.replace(~r/document\('[^']*'\)/, "document('#')")
+          |> String.replace(["{", "}"], "")
+          |> String.split(~r/\s+/u, trim: true)
+          |> Enum.join(" ")
+
+        "test:" <> (:md5 |> :crypto.hash(normalized) |> Base.encode16(case: :lower) |> binary_part(0, 12))
+      end
+
+    "#{flag}:#{identity}"
   end
 end

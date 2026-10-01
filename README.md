@@ -41,7 +41,35 @@ Beyond unit tests of the XPath runtime, the test suite replays a differential
 oracle: thousands of deterministic mutants of real invoices, with the verdicts
 of Saxon-HE (running each schematron's reference XSLT) frozen per schematron in
 `test/fixtures/oracle/`. The suite requires no Java; refreshing the manifests
-does (`mix run scripts/refresh_oracle.exs`).
+does:
+
+```
+./scripts/fetch_rfe_corpus.sh              # reference XSLTs, into gitignored tools/rfe/
+MIX_ENV=test mix run scripts/refresh_oracle.exs [pair_key ...]
+```
+
+### FNFE corpus
+
+The schematrons under `test/fixtures/schematron/` are copied verbatim from the
+[FNFE France_RFE](https://github.com/fnfempe/France_RFE) corpus; the tag and
+commit they come from are in `test/fixtures/schematron/VERSION`. Every
+schematron that corpus ships is compiled, and all but one are replayed against
+Saxon:
+
+| Pair | Schematron | Invoice profiles |
+| --- | --- | --- |
+| `flux2_cii` / `flux2_cii_warning` | BR-FR-Flux2 CII | CII EN16931 + CII EXTENDED-CTC-FR |
+| `flux2_ubl` / `flux2_ubl_warning` | BR-FR-Flux2 UBL | UBL EN16931 + UBL EXTENDED-CTC-FR |
+| `en16931_cii` / `en16931_ubl` | EN16931 preprocessed | CII / UBL EN16931 |
+| `extended_ctc_cii` / `extended_ctc_ubl` | EXTENDED-CTC-FR | CII / UBL EXTENDED-CTC-FR |
+| `fx_basicwl` / `fx_en16931` / `fx_extended` | Factur-X | Factur-X BASIC-WL / CII EN16931 / Factur-X EXTENDED |
+| `cdar` / `cdar_warning` | BR-FR-CDV CDAR | CDAR lifecycle statuses |
+| `flux10` | Flux10 e-reporting | none upstream, so compiled but not replayed |
+
+The `_WARNING` variants carry the same rules as their FATAL twin and differ
+only by `flag`, so a frozen verdict is keyed by `"<flag>:<id>"`. Without the
+flag the two manifests would be identical and the variants would assert
+nothing.
 
 ### ISO conformance corpus
 
