@@ -217,6 +217,12 @@ defmodule ExSchematron.RuntimeTest do
       assert Functions.substring(doc, ["e\u0301x"], [2], [1]) == ["\u0301"]
     end
 
+    test "string-to-codepoints", %{doc: doc} do
+      assert Functions.string_to_codepoints(doc, ["A0é"]) == [65, 48, 233]
+      assert Functions.string_to_codepoints(doc, [""]) == []
+      assert Functions.string_to_codepoints(doc, []) == []
+    end
+
     test "division by zero raises for integers and decimals, not doubles", %{doc: doc} do
       for op <- [:div, :idiv, :mod] do
         assert_raise Runtime.Error, ~r/division by zero/, fn -> Runtime.arith(doc, op, [1], [0]) end

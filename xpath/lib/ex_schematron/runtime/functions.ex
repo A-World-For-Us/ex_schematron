@@ -47,6 +47,9 @@ defmodule ExSchematron.Runtime.Functions do
   # XPath string lengths and positions count codepoints, not grapheme clusters.
   def string_length(doc, seq), do: [length(String.to_charlist(one_string!(doc, seq)))]
 
+  # xs:integer* of the codepoints; the empty sequence for "" or ().
+  def string_to_codepoints(doc, seq), do: String.to_charlist(one_string!(doc, seq))
+
   def upper_case(doc, seq), do: [doc |> one_string!(seq) |> String.upcase()]
   def lower_case(doc, seq), do: [doc |> one_string!(seq) |> String.downcase()]
 
