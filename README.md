@@ -92,7 +92,7 @@ into a regression check and an explicit record of what is not supported yet.
 Refresh it with `MIX_ENV=test mix run scripts/refresh_conformance.exs`, which
 rewrites the manifest and prints the score and every non-conforming testcase.
 
-#### Score: 24/50
+#### Score: 26/50
 
 | Area | Pass | Missing or wrong |
 | --- | --- | --- |
@@ -101,7 +101,7 @@ rewrites the manifest and prints the score and every non-conforming testcase.
 | Rule order and abstract rules | 2/3 | Abstract rules unsupported. |
 | Patterns | 0/3 | Abstract patterns (`<param>`) unsupported. `<pattern documents="...">` is silently ignored -- the one place the library skips a check without saying so. |
 | Phases | 0/2 | `defaultPhase` raises; validating under a named phase has no API. |
-| `include` / `extends` fixup | 0/4 | Neither is implemented, so base-URI fixup is untested. |
+| `include` / `extends` fixup | 2/4 | `include` is resolved, nested and with base-URI fixup (`parse_file!/1` only; fragment hrefs raise). `extends` is not implemented. |
 | `xsl:key` | 0/2 | Schema-level `xsl:key` unsupported. |
 | SVRL output | 3/7 | `diagnostics` and `properties` unsupported; `validate/1` returns verdict maps, not an SVRL report. |
 

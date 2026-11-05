@@ -3,7 +3,7 @@
 # `test/ex_schematron/conformance_test.exs`; regenerate with
 # `MIX_ENV=test mix run scripts/refresh_conformance.exs`.
 #
-# Conforming: 24/50.
+# Conforming: 26/50.
 %{
   # expect valid -- NOT CONFORMING
   "core/extends-baseuri-fixup-01" => [
@@ -13,12 +13,10 @@
   "core/extends-recursive-01" => [
     error: "unsupported rule element {\"http://purl.oclc.org/dsdl/schematron\", \"extends\"} in rule \"/\""
   ],
-  # expect valid -- NOT CONFORMING
-  "core/include-baseuri-fixup-01" => [
-    error: "unsupported pattern element {\"http://purl.oclc.org/dsdl/schematron\", \"include\"} in pattern nil"
-  ],
-  # expect invalid -- NOT CONFORMING
-  "core/include-recursive-01" => [error: "unsupported schema-level element {\"http://purl.oclc.org/dsdl/schematron\", \"include\"}"],
+  # expect valid
+  "core/include-baseuri-fixup-01" => [:valid],
+  # expect invalid
+  "core/include-recursive-01" => [:invalid],
   # expect error
   "core/let-name-collision-error-01" => [error: "variable $foo multiply defined in rule \"/\""],
   # expect error
