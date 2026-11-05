@@ -37,11 +37,6 @@ defmodule ExSchematron.Sch.Scopes do
       end)
     end)
 
-    Enum.each(schema.functions, fn function ->
-      names = function.params ++ Enum.map(function.bindings, &elem(&1, 0))
-      check_scope!(names, "function #{format_name(function.name)}")
-    end)
-
     check_scope!(Enum.map(schema.lets, &elem(&1, 0)), "schema")
 
     Enum.each(schema.patterns, fn pattern ->
@@ -75,6 +70,17 @@ defmodule ExSchematron.Sch.Scopes do
     %__MODULE__{globals: globals, patterns: patterns}
   end
 
+  @doc """
+  Checks the params and xsl:variables of one xsl:function, with the same rules
+  as any other scope. Kept out of `resolve!/1`: the compiler calls it only for
+  the functions a rule reaches, since an uncalled one is never compiled.
+  """
+  @spec check_function!(Sch.Function.t()) :: :ok
+  def check_function!(%Sch.Function{} = function) do
+    names = function.params ++ Enum.map(function.bindings, &elem(&1, 0))
+    check_scope!(names, "function #{format_name(function.name)}")
+  end
+
   @doc "Storage key of a variable name: a sanitized `:v_`-prefixed atom."
   @spec var_key(var_name()) :: atom()
   def var_key({nil, local}), do: :"v_#{sanitize(local)}"
@@ -94,6 +100,7 @@ defmodule ExSchematron.Sch.Scopes do
     end)
 
     names |> Enum.uniq() |> Enum.group_by(&var_key/1) |> Enum.each(&check_key_group!(&1, where))
+    :ok
   end
 
   defp check_global_keys!(globals) do

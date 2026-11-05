@@ -10,7 +10,9 @@ document order). No JVM, no NIF, no network at runtime.
 
 Compilation raises on any XPath construct or Schematron form it does not
 support: a new schematron version that introduces something new fails the build
-instead of silently skipping checks.
+instead of silently skipping checks. Only the `xsl:function`s the rules actually
+call are compiled: a helper no rule reaches may use any form, since it cannot
+hide a check.
 
 ## Usage
 
