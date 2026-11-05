@@ -10,7 +10,9 @@ defmodule ExSchematron.Compiler do
   `xsl:function` definitions, and the `document()` code-list lookup. It
   extends the XPath compiler through its `Env` hooks. Compilation raises on
   any XPath construct, function or schematron form outside the supported
-  table — never a silent skip.
+  table — never a silent skip. The one exception is an `xsl:function` no rule
+  or global reaches: it is not compiled at all, so its body may be anything,
+  since nothing evaluates it.
   """
 
   alias ExSchematron.Sch
@@ -29,6 +31,11 @@ defmodule ExSchematron.Compiler do
   # The variable the XPath compiler's emitted code reads the document from;
   # every generated function binds it in its head.
   @doc_var XPC.doc_var()
+
+  # Compilation-scoped registries, in the process dictionary: the code lists
+  # referenced so far, and the xsl:functions called so far (name => where).
+  @codelist_registry {__MODULE__, :codelist_registry}
+  @called_functions {__MODULE__, :called_functions}
 
   @doc "Compiles a parsed schematron into a quoted module body defining `validate/1`."
   @spec build_body!(Sch.Schema.t()) :: Macro.t()
@@ -51,10 +58,10 @@ defmodule ExSchematron.Compiler do
     # compiler only transcribes its storage plan.
     scopes = Scopes.resolve!(schema)
 
-    function_defs = Enum.map(schema.functions, &compile_function(&1, base_env))
-    globals_def = compile_globals(scopes.globals, base_env)
+    Process.delete(@codelist_registry)
+    Process.put(@called_functions, %{})
 
-    Process.delete({__MODULE__, :codelist_registry})
+    globals_def = compile_globals(scopes.globals, base_env)
 
     {pattern_defs, pattern_calls} =
       schema.patterns
@@ -62,6 +69,9 @@ defmodule ExSchematron.Compiler do
       |> Enum.with_index()
       |> Enum.map(fn {{pattern, pattern_scope}, index} -> compile_pattern(pattern, index, base_env, pattern_scope) end)
       |> Enum.unzip()
+
+    # Last, once the rules and globals have said which functions they call.
+    function_defs = compile_called_functions(schema.functions, base_env)
 
     codelist_definitions = codelist_defs()
 
@@ -81,17 +91,12 @@ defmodule ExSchematron.Compiler do
       unquote_splicing(function_defs)
 
       unquote_splicing(codelist_definitions)
-
-      # A schematron may declare helper functions that none of its rules call;
-      # referencing them here keeps the unused-function check quiet.
-      @doc false
-      def __schematron_functions__ do
-        unquote(Enum.map(functions, fn {name, arity} -> capture_ast(function_fun_name(name), arity + 1) end))
-      end
     end
   rescue
     # One public error type for generation failures, whichever layer raised.
     error in [XPC.Error] -> raise Error, message: Exception.message(error)
+  after
+    Process.delete(@called_functions)
   end
 
   # ---------------------------------------------------------------- globals
@@ -373,6 +378,35 @@ defmodule ExSchematron.Compiler do
 
   # ------------------------------------------------------------- xsl:function
 
+  # Only the functions a rule or a global reaches, directly or through other
+  # functions, are compiled: compiling one registers the functions its body
+  # calls, so the loop runs until no new name shows up. A schematron routinely
+  # declares helpers none of its rules call (the PEPPOL block of the KoSIT
+  # XRechnung schematron); those may use forms this library does not support,
+  # and cannot hide a check since nothing evaluates them.
+  defp compile_called_functions(functions, env, compiled \\ MapSet.new(), defs \\ []) do
+    called = Process.get(@called_functions)
+    pending = Enum.filter(functions, fn function -> Map.has_key?(called, function.name) and function.name not in compiled end)
+
+    case pending do
+      [] ->
+        defs |> Enum.reverse() |> List.flatten()
+
+      _some ->
+        new_defs = Enum.map(pending, fn function -> compile_function(function, called[function.name], env) end)
+        compiled = Enum.reduce(pending, compiled, fn function, acc -> MapSet.put(acc, function.name) end)
+        compile_called_functions(functions, env, compiled, [new_defs | defs])
+    end
+  end
+
+  defp compile_function(%Sch.Function{unsupported: reason} = function, called_from, _env) when is_binary(reason) do
+    raise Error, message: "function #{format_name(function.name)}, called in #{called_from}: #{reason}"
+  end
+
+  defp compile_function(%Sch.Function{} = function, _called_from, env) do
+    compile_function(function, env)
+  end
+
   defp compile_function(%Sch.Function{} = function, env) do
     param_vars = Enum.map(function.params, &let_var/1)
 
@@ -412,13 +446,13 @@ defmodule ExSchematron.Compiler do
         raise XPC.Error, message: "#{format_name(name)}() expects #{arity} arguments, got #{length(compiled_args)} in #{env.where}"
 
       _arity ->
+        # The first caller is kept for the error of an unsupported function.
+        Process.put(@called_functions, Map.put_new(Process.get(@called_functions), name, env.where))
         {:ok, quote(do: unquote(function_fun_name(name))(unquote(@doc_var), unquote_splicing(compiled_args)))}
     end
   end
 
   defp function_fun_name({prefix, local}), do: :"fn_#{sanitize("#{prefix}_#{local}")}"
-
-  defp capture_ast(fun_name, arity), do: Code.string_to_quoted!("&#{fun_name}/#{arity}")
 
   # ----------------------------------------------------------- code lists
 
@@ -451,7 +485,7 @@ defmodule ExSchematron.Compiler do
   # Compilation-scoped registry of the code lists referenced so far, so each is
   # emitted once as a private function definition.
   defp register_codelist!(file, cl_id, env, base_dir) do
-    key = {__MODULE__, :codelist_registry}
+    key = @codelist_registry
     registry = Process.get(key, %{})
 
     case Map.fetch(registry, {file, cl_id}) do
@@ -467,7 +501,7 @@ defmodule ExSchematron.Compiler do
   end
 
   defp codelist_defs do
-    key = {__MODULE__, :codelist_registry}
+    key = @codelist_registry
     registry = Process.get(key, %{})
     Process.delete(key)
 

@@ -52,8 +52,13 @@ defmodule ExSchematron.Sch do
   end
 
   defmodule Function do
-    @moduledoc "An xsl:function: bindings evaluate in order, `result` is the final xsl:sequence select."
-    defstruct [:name, :result, params: [], bindings: []]
+    @moduledoc """
+    An xsl:function: bindings evaluate in order, `result` is the final
+    xsl:sequence select. A body outside the supported subset leaves `result`
+    nil and the reason in `unsupported`: the compiler raises it only if a rule
+    actually calls the function, since an uncalled one cannot hide a check.
+    """
+    defstruct [:name, :result, :unsupported, params: [], bindings: []]
   end
 
   # Where an element comes from: its document, the directory its relative
@@ -213,9 +218,12 @@ defmodule ExSchematron.Sch do
 
     param_names = Enum.map(params, fn param -> parse_var_name(attr!(source, param, "name")) end)
 
-    {bindings, result} = parse_function_body(source, name, body, [])
-
-    %Function{name: name, params: param_names, bindings: bindings, result: result}
+    try do
+      {bindings, result} = parse_function_body(source, name, body, [])
+      %Function{name: name, params: param_names, bindings: bindings, result: result}
+    rescue
+      error in Error -> %Function{name: name, params: param_names, unsupported: Exception.message(error)}
+    end
   end
 
   defp parse_function_body(source, function_name, [%Xml.Node{name: {@xsl_ns, "variable"}} = element | rest], bindings) do

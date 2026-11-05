@@ -192,6 +192,57 @@ defmodule ExSchematron.CompilerTest do
     end
   end
 
+  describe "xsl:functions" do
+    @functions_sch """
+    <schema xmlns="http://purl.oclc.org/dsdl/schematron"
+      xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:u="utils" queryBinding="xslt2">
+      <ns prefix="inv" uri="urn:invoice"/>
+      <ns prefix="u" uri="utils"/>
+      <xsl:function name="u:outer">
+        <xsl:param name="v"/>
+        <xsl:sequence select="u:inner($v)"/>
+      </xsl:function>
+      <xsl:function name="u:inner">
+        <xsl:param name="v"/>
+        <xsl:sequence select="string-length($v) = 3"/>
+      </xsl:function>
+      <xsl:function name="u:unknown-builtin">
+        <xsl:param name="v"/>
+        <xsl:sequence select="frobnicate($v)"/>
+      </xsl:function>
+      <xsl:function name="u:choose">
+        <xsl:param name="v"/>
+        <xsl:choose><xsl:when test="true()"><xsl:sequence select="true()"/></xsl:when></xsl:choose>
+      </xsl:function>
+      <pattern id="P"><rule context="inv:ID"><assert test="u:outer(.)" id="X">x</assert></rule></pattern>
+    </schema>
+    """
+
+    test "only the functions a rule reaches are compiled, the others may be unsupported" do
+      module = ExSchematron.compile!(@functions_sch, CompilerTestReachableFunctions)
+
+      assert function_exported?(module, :validate, 1)
+      assert module.validate(~s(<inv:ID xmlns:inv="urn:invoice">ABC</inv:ID>)) == []
+      assert [%{rule: "X"}] = module.validate(~s(<inv:ID xmlns:inv="urn:invoice">ABCD</inv:ID>))
+    end
+
+    test "an unsupported function body raises once a rule calls it, naming the caller" do
+      sch = String.replace(@functions_sch, ~s{test="u:outer(.)"}, ~s{test="u:choose(.)"})
+
+      assert_raise Compiler.Error, ~r/function u:choose, called in check "X": unsupported xsl:function body/, fn ->
+        sch |> Sch.parse!() |> Compiler.build_body!()
+      end
+    end
+
+    test "an unsupported construct in a function reached through another one still raises" do
+      sch = String.replace(@functions_sch, ~s{select="u:inner($v)"}, ~s{select="u:unknown-builtin($v)"})
+
+      assert_raise Compiler.Error, ~r/unsupported function frobnicate\/1 in function u:unknown-builtin/, fn ->
+        sch |> Sch.parse!() |> Compiler.build_body!()
+      end
+    end
+  end
+
   test "undeclared namespace prefix raises at generation" do
     sch = """
     <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
