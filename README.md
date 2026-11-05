@@ -73,6 +73,16 @@ only by `flag`, so a frozen verdict is keyed by `"<flag>:<id>"`. Without the
 flag the two manifests would be identical and the variants would assert
 nothing.
 
+### KoSIT XRechnung
+
+`test/fixtures/schematron/xrechnung/` holds the
+[KoSIT XRechnung](https://github.com/itplr-kosit/xrechnung-schematron) CII
+schematron, verbatim from a release (see its `VERSION`). It is compiled as
+released, include of `common.sch` and uncalled PEPPOL helpers included, and
+spot-checked on the rules that depend on them (`BR-DE-19`/`20`, the mod-97 IBAN
+check; `BR-DE-21`, the specification identifier). It is not replayed against
+Saxon.
+
 ### ISO conformance corpus
 
 The oracle says we agree with Saxon on real invoices; it says nothing about the

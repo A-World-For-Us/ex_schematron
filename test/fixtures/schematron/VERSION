@@ -10,4 +10,5 @@ schematrons are replicated under every profile upstream; the copies are
 identical, so one of each is kept here.
 
 Reference XSLTs are not vendored: run scripts/fetch_rfe_corpus.sh to get them.
-minimal.sch is a hand-written unit fixture, not part of this corpus.
+minimal.sch is a hand-written unit fixture, not part of this corpus. xrechnung/
+comes from KoSIT, not FNFE: see xrechnung/VERSION.

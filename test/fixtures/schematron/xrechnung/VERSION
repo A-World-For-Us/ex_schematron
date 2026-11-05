@@ -1,0 +1,12 @@
+KoSIT XRechnung schematron
+https://github.com/itplr-kosit/xrechnung-schematron
+
+release: v2.6.0 (XRechnung 3.0.2), asset xrechnung-3.0.2-schematron-2.6.0.zip
+commit:  217c6cbf8ac9a99d780cefb4f044b2c2778d4744
+date:    2026-09-02
+
+Copied verbatim from schematron/ in the release zip, keeping its layout:
+cii/XRechnung-CII-validation.sch includes ../common.sch. Apache-2.0, see LICENSE.
+Not replayed against Saxon: test/ex_schematron/xrechnung_test.exs checks that
+it compiles as released and spot-checks the rules that depend on common.sch
+and on xr:checkIBAN.
