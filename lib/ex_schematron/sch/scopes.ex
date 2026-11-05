@@ -15,18 +15,23 @@ defmodule ExSchematron.Sch.Scopes do
       sanitize to the same key are an error -- stored together they would
       silently overwrite each other in the generated module.
 
+    * An xsl:function sees the globals (XSLT global variables), never a
+      pattern's own shadowing let: a shadowed name resolves to the schema one.
+
   `resolve!/1` returns the storage plan: the global entries in evaluation
-  order, and one name-to-key binding map per pattern.
+  order, one name-to-key binding map per pattern, and the name-to-key map the
+  functions see.
   """
 
   alias ExSchematron.Sch
 
-  defstruct globals: [], patterns: []
+  defstruct globals: [], patterns: [], functions: %{}
 
   @type var_name :: {prefix :: String.t() | nil, local :: String.t()}
   @type t :: %__MODULE__{
           globals: [{key :: atom(), var_name(), value :: String.t()}],
-          patterns: [%{bindings: %{var_name() => atom()}}]
+          patterns: [%{bindings: %{var_name() => atom()}}],
+          functions: %{var_name() => atom()}
         }
 
   @spec resolve!(Sch.Schema.t()) :: t()
@@ -72,7 +77,7 @@ defmodule ExSchematron.Sch.Scopes do
         %{bindings: bindings}
       end)
 
-    %__MODULE__{globals: globals, patterns: patterns}
+    %__MODULE__{globals: globals, patterns: patterns, functions: base}
   end
 
   @doc "Storage key of a variable name: a sanitized `:v_`-prefixed atom."

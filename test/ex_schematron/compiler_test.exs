@@ -243,6 +243,52 @@ defmodule ExSchematron.CompilerTest do
     end
   end
 
+  describe "globals in xsl:functions" do
+    defp globals_sch(lets, function_select, assert_test) do
+      """
+      <schema xmlns="http://purl.oclc.org/dsdl/schematron"
+        xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:u="utils" queryBinding="xslt2">
+        <ns prefix="inv" uri="urn:invoice"/>
+        <ns prefix="u" uri="utils"/>
+        #{lets}
+        <xsl:function name="u:f">
+          <xsl:param name="v"/>
+          <xsl:sequence select="#{function_select}"/>
+        </xsl:function>
+        <pattern id="constants"><let name="SUFFIX" value="'-X'"/></pattern>
+        <pattern id="P"><rule context="inv:ID"><assert test="#{assert_test}" id="X">x</assert></rule></pattern>
+      </schema>
+      """
+    end
+
+    @id_doc ~s(<inv:ID xmlns:inv="urn:invoice">FAC-X</inv:ID>)
+
+    test "a function reads schema lets and hoisted pattern lets" do
+      sch = globals_sch(~s(<let name="PREFIX" value="'FAC'"/>), "$v = concat($PREFIX, $SUFFIX)", "u:f(string(.))")
+      module = ExSchematron.compile!(sch, CompilerTestFunctionGlobals)
+
+      assert module.validate(@id_doc) == []
+      assert [%{rule: "X"}] = module.validate(String.replace(@id_doc, "FAC-X", "FAC-Y"))
+    end
+
+    test "a global may call a function reading the globals evaluated before it" do
+      lets = ~s{<let name="PREFIX" value="'FAC'"/><let name="EXPECTED" value="u:f('-X')"/>}
+      sch = globals_sch(lets, "concat($PREFIX, $v)", ". = $EXPECTED")
+      module = ExSchematron.compile!(sch, CompilerTestGlobalCallsFunction)
+
+      assert module.validate(@id_doc) == []
+    end
+
+    test "a global calling a function that reads a later global raises" do
+      lets = ~s{<let name="EXPECTED" value="u:f('-X')"/><let name="PREFIX" value="'FAC'"/>}
+      sch = globals_sch(lets, "concat($PREFIX, $v)", ". = $EXPECTED")
+
+      assert_raise Compiler.Error, ~r/let \$EXPECTED calls u:f\(\), which reads \$PREFIX, not evaluated yet/, fn ->
+        sch |> Sch.parse!() |> Compiler.build_body!()
+      end
+    end
+  end
+
   test "undeclared namespace prefix raises at generation" do
     sch = """
     <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
