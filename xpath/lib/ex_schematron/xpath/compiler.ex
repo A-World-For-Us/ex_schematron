@@ -316,6 +316,7 @@ defmodule ExSchematron.XPath.Compiler do
     {"string", 1} => :string_,
     {"normalize-space", 1} => :normalize_space,
     {"string-length", 1} => :string_length,
+    {"string-to-codepoints", 1} => :string_to_codepoints,
     {"upper-case", 1} => :upper_case,
     {"lower-case", 1} => :lower_case,
     {"contains", 2} => :contains,
