@@ -1,4 +1,4 @@
 %{
   "decimal": {:hex, :decimal, "3.1.1", "430d87b04011ce6cbd4fd205be758311a81f87d552d40904abd00f015935b1d0", [:mix], [], "hexpm", "c5f25f2ced74a0587d03e6023f595db8e924c9d3922c8c8ffd9edfc4498cf1f6"},
-  "saxy": {:hex, :saxy, "1.6.1", "742eff28f553c066d0b54e84662dbf384a1d1f38595472ed15f6e0a33038bbe1", [:mix], [], "hexpm", "8989d504424ba29460a61950f8968380651413fa05e63b6118084db057da1a6b"},
+  "saxy": {:hex, :saxy, "1.7.0", "61802f6e0e38ff4e6f29750018b95fe22f977bd989c446f9058c816684b23b87", [:mix], [], "hexpm", "a25acd81a6112828a3d190f568e9f716f6334eeba22ac3abc50bbb851fac91e2"},
 }
