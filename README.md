@@ -10,7 +10,9 @@ document order). No JVM, no NIF, no network at runtime.
 
 Compilation raises on any XPath construct or Schematron form it does not
 support: a new schematron version that introduces something new fails the build
-instead of silently skipping checks.
+instead of silently skipping checks. Only the `xsl:function`s the rules actually
+call are compiled: a helper no rule reaches may use any form, since it cannot
+hide a check.
 
 ## Usage
 
@@ -71,6 +73,16 @@ only by `flag`, so a frozen verdict is keyed by `"<flag>:<id>"`. Without the
 flag the two manifests would be identical and the variants would assert
 nothing.
 
+### KoSIT XRechnung
+
+`test/fixtures/schematron/xrechnung/` holds the
+[KoSIT XRechnung](https://github.com/itplr-kosit/xrechnung-schematron) CII
+schematron, verbatim from a release (see its `VERSION`). It is compiled as
+released, include of `common.sch` and uncalled PEPPOL helpers included, and
+spot-checked on the rules that depend on them (`BR-DE-19`/`20`, the mod-97 IBAN
+check; `BR-DE-21`, the specification identifier). It is not replayed against
+Saxon.
+
 ### ISO conformance corpus
 
 The oracle says we agree with Saxon on real invoices; it says nothing about the
@@ -92,7 +104,7 @@ into a regression check and an explicit record of what is not supported yet.
 Refresh it with `MIX_ENV=test mix run scripts/refresh_conformance.exs`, which
 rewrites the manifest and prints the score and every non-conforming testcase.
 
-#### Score: 24/50
+#### Score: 26/50
 
 | Area | Pass | Missing or wrong |
 | --- | --- | --- |
@@ -101,7 +113,7 @@ rewrites the manifest and prints the score and every non-conforming testcase.
 | Rule order and abstract rules | 2/3 | Abstract rules unsupported. |
 | Patterns | 0/3 | Abstract patterns (`<param>`) unsupported. `<pattern documents="...">` is silently ignored -- the one place the library skips a check without saying so. |
 | Phases | 0/2 | `defaultPhase` raises; validating under a named phase has no API. |
-| `include` / `extends` fixup | 0/4 | Neither is implemented, so base-URI fixup is untested. |
+| `include` / `extends` fixup | 2/4 | `include` is resolved, nested and with base-URI fixup (`parse_file!/1` only; fragment hrefs raise). `extends` is not implemented. |
 | `xsl:key` | 0/2 | Schema-level `xsl:key` unsupported. |
 | SVRL output | 3/7 | `diagnostics` and `properties` unsupported; `validate/1` returns verdict maps, not an SVRL report. |
 

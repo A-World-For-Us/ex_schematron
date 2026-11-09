@@ -51,8 +51,94 @@ defmodule ExSchematron.SchTest do
   end
 
   test "raises on unsupported constructs" do
-    unsupported = String.replace(@minimal, "<title>Titre</title>", "<include href='other.sch'/>")
+    unsupported = String.replace(@minimal, "<title>Titre</title>", "<extends rule='other'/>")
     assert_raise Sch.Error, ~r/unsupported pattern element/, fn -> Sch.parse!(unsupported) end
+  end
+
+  describe "include" do
+    @describetag :tmp_dir
+
+    defp write!(dir, relative, content) do
+      path = Path.join(dir, relative)
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, content)
+      path
+    end
+
+    test "an included pattern of lets is a pattern of the schema, its lets hoisted", %{tmp_dir: dir} do
+      write!(dir, "common.sch", """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <pattern xmlns="http://purl.oclc.org/dsdl/schematron" id="variable-pattern">
+        <!-- constants only -->
+        <let name="VERSION" value="'3.0'"/>
+      </pattern>
+      """)
+
+      path =
+        write!(dir, "cii/main.sch", """
+        <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+          <include href="../common.sch"/>
+          <pattern id="main">
+            <rule context="/"><assert test="$VERSION = '3.0'" id="R1">x</assert></rule>
+          </pattern>
+        </schema>
+        """)
+
+      schema = Sch.parse_file!(path)
+
+      assert [%Sch.Pattern{id: "variable-pattern", lets: [{{nil, "VERSION"}, "'3.0'"}]}, %Sch.Pattern{id: "main"}] =
+               schema.patterns
+
+      assert schema.included_files == [Path.join(dir, "common.sch")]
+      assert schema.base_dir == Path.join(dir, "cii")
+    end
+
+    test "nested includes resolve against the including file", %{tmp_dir: dir} do
+      write!(dir, "subdir/rule.sch", """
+      <rule xmlns="http://purl.oclc.org/dsdl/schematron" context="/">
+        <include href="assert.sch"/>
+      </rule>
+      """)
+
+      write!(dir, "subdir/assert.sch", """
+      <assert xmlns="http://purl.oclc.org/dsdl/schematron" test="true()" id="A1"/>
+      """)
+
+      path =
+        write!(dir, "main.sch", """
+        <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+          <pattern><include href="subdir/rule.sch"/></pattern>
+        </schema>
+        """)
+
+      schema = Sch.parse_file!(path)
+
+      assert [%Sch.Pattern{rules: [%Sch.Rule{context: "/", checks: [%Sch.Check{id: "A1"}]}]}] = schema.patterns
+      assert schema.included_files == [Path.join(dir, "subdir/rule.sch"), Path.join(dir, "subdir/assert.sch")]
+    end
+
+    test "raises on an include cycle", %{tmp_dir: dir} do
+      write!(dir, "a.sch", ~s(<pattern xmlns="http://purl.oclc.org/dsdl/schematron"><include href="b.sch"/></pattern>))
+      write!(dir, "b.sch", ~s(<rule xmlns="http://purl.oclc.org/dsdl/schematron" context="/"><include href="a.sch"/></rule>))
+
+      path =
+        write!(dir, "main.sch", """
+        <schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2"><include href="a.sch"/></schema>
+        """)
+
+      assert_raise Sch.Error, ~r/include cycle/, fn -> Sch.parse_file!(path) end
+    end
+
+    test "raises on a missing file, a fragment, or a schema parsed from a string", %{tmp_dir: dir} do
+      missing = write!(dir, "missing.sch", String.replace(@minimal, "<title>Titre</title>", "<include href='nope.sch'/>"))
+      assert_raise Sch.Error, ~r/not found/, fn -> Sch.parse_file!(missing) end
+
+      fragment = write!(dir, "fragment.sch", String.replace(@minimal, "<title>Titre</title>", "<include href='x.sch#p'/>"))
+      assert_raise Sch.Error, ~r/fragment/, fn -> Sch.parse_file!(fragment) end
+
+      from_string = String.replace(@minimal, "<title>Titre</title>", "<include href='other.sch'/>")
+      assert_raise Sch.Error, ~r/needs the schematron's directory/, fn -> Sch.parse!(from_string) end
+    end
   end
 
   test "shadowing a let of an outer scope stays legal" do
