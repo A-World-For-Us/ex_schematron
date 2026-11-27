@@ -1,5 +1,7 @@
 Corpus FNFE France_RFE
 https://github.com/fnfempe/France_RFE
+Apache-2.0, see LICENSE. Some files carry an EUPL header of their own, kept as
+is: EUPL-1.2 text in LICENSE.EUPL-1.2 (no EUPL 1.4.0 exists).
 
 tag:    v1.4.0.04
 commit: 97ba0f3d4ef2abed5780e9490d5c3a2be832ab1d

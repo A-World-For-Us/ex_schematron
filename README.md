@@ -121,3 +121,8 @@ SVRL report. Only their `@expect` is checked.
 ## Status
 
 Work in progress.
+
+## Licence
+
+MIT, see `LICENSE`. The third-party schematrons vendored under
+`test/fixtures/schematron/` keep their own licences, recorded next to them.
