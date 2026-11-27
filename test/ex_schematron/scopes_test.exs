@@ -71,15 +71,23 @@ defmodule ExSchematron.Sch.ScopesTest do
     end
   end
 
-  test "a duplicate xsl:variable or xsl:param in a function raises" do
-    assert_raise Sch.Error, ~r/variable \$x multiply defined in function my:f/, fn ->
-      resolve!("""
-      <xsl:function name="my:f">
-        <xsl:param name="x"/>
-        <xsl:variable name="x" select="1"/>
-        <xsl:sequence select="$x"/>
-      </xsl:function>
+  test "a duplicate xsl:variable or xsl:param in a function raises once checked, not at resolve" do
+    schema =
+      Sch.parse!("""
+      <schema xmlns="http://purl.oclc.org/dsdl/schematron"
+        xmlns:xsl="http://www.w3.org/1999/XSL/Transform" queryBinding="xslt2">
+        <xsl:function name="my:f">
+          <xsl:param name="x"/>
+          <xsl:variable name="x" select="1"/>
+          <xsl:sequence select="$x"/>
+        </xsl:function>
+      </schema>
       """)
+
+    assert %Scopes{} = Scopes.resolve!(schema)
+
+    assert_raise Sch.Error, ~r/variable \$x multiply defined in function my:f/, fn ->
+      schema.functions |> hd() |> Scopes.check_function!()
     end
   end
 

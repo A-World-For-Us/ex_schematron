@@ -12,8 +12,9 @@ defmodule ExSchematron do
       MyApp.InvoiceValidator.validate(xml_binary)
       #=> [%{type: :assert, rule: "BR-01", flag: "warning", message: "...", node: "/inv:Invoice[1]/..."}]
 
-  The module recompiles when the `.sch` file changes. Compilation raises on any
-  construct outside the supported subset, never skipping a check silently.
+  The module recompiles when the `.sch` file, or a file it includes, changes.
+  Compilation raises on any construct outside the supported subset, never
+  skipping a check silently.
 
   `compile!/2` builds a module at runtime instead, from a schematron source string.
   """
@@ -24,10 +25,12 @@ defmodule ExSchematron do
   defmacro __using__(opts) do
     {opts, _bindings} = Code.eval_quoted(opts, [], __CALLER__)
     sch_path = Keyword.fetch!(opts, :sch)
-    body = sch_path |> Sch.parse_file!() |> Compiler.build_body!()
+    schema = Sch.parse_file!(sch_path)
+    body = Compiler.build_body!(schema)
+    resources = [sch_path | schema.included_files]
 
     quote do
-      @external_resource unquote(sch_path)
+      for resource <- unquote(resources), do: @external_resource(resource)
       unquote(body)
     end
   end
